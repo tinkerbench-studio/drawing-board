@@ -13,25 +13,28 @@ project keeps what is particular to it in one short file.
 
 ## Using it in a project
 
-1. Add the marketplace and turn the plugin on in the project's `.claude/settings.json`:
+1. The plugin is listed in the studio marketplace,
+   [tinkerbench-studio/marketplace](https://github.com/tinkerbench-studio/marketplace), as
+   `drawing-board@tinkerbench-studio`. Add that marketplace and turn the plugin on in the project's
+   `.claude/settings.json`:
 
    ```json
    {
      "extraKnownMarketplaces": {
-       "drawing-board": { "source": { "source": "github", "repo": "tinkerbench-studio/drawing-board" } }
+       "tinkerbench-studio": { "source": { "source": "github", "repo": "tinkerbench-studio/marketplace" } }
      },
-     "enabledPlugins": { "drawing-board@drawing-board": true }
+     "enabledPlugins": { "drawing-board@tinkerbench-studio": true }
    }
    ```
 
 2. For cloud sessions, install it in the environment's setup script as well:
 
    ```bash
-   claude plugin marketplace add tinkerbench-studio/drawing-board
-   claude plugin install drawing-board@drawing-board
+   claude plugin marketplace add tinkerbench-studio/marketplace
+   claude plugin install drawing-board@tinkerbench-studio
    ```
 
-   The cloud environment's GitHub access must cover this repository if it is private.
+   The cloud environment's GitHub access must cover the marketplace repository and this one.
 
 3. Copy [`plugin/templates/drawing-board.md`](plugin/templates/drawing-board.md) to
    `.claude/drawing-board.md` in the project and fill it in: the canvas link, the snapshot folder,
