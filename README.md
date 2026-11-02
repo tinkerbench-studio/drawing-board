@@ -41,7 +41,11 @@ keeps what is particular to it in one short file and one config file.
    `.claude/drawing-board.md` in the project and fill it in: the canvas link, the snapshot folder,
    the commands for each step, the flow pages and the ticket key for prototype pages.
 
-4. Slim the project's own canvas skills down to what the template does not cover, and point them
+4. Install the snapshot commands, the package below ("Setting it up in a project"). The skills and
+   the template call `drawing-board snapshot`, `check` and `index`; without the package, map each
+   of those steps to the project's own command in `.claude/drawing-board.md`, or say it has none.
+
+5. Slim the project's own canvas skills down to what the template does not cover, and point them
    at these.
 
 ## The snapshot commands: `@tinkerbench-studio/drawing-board`
@@ -75,12 +79,27 @@ Each board has, under `<snapshot>/boards/`:
    //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
    ```
 
-   Locally, `NODE_AUTH_TOKEN` is a token with `read:packages` (`gh auth token` works once
-   `gh auth refresh -s read:packages` has added the scope). In GitHub Actions it is the workflow's
-   `GITHUB_TOKEN`, once the package's settings ("Manage Actions access") grant the project's
-   repository read access.
+   npm runs normally with `NODE_AUTH_TOKEN` unset; it is only read when a package from the scope is
+   fetched. Where it is needed:
 
-2. `npm install --save-dev @tinkerbench-studio/drawing-board@0.1.0`
+   - **Locally**, a token with `read:packages` and nothing else, not your full `gh auth token`: the
+     package runs with whatever token the environment holds.
+   - **In GitHub Actions**, the workflow's `GITHUB_TOKEN`, once the package's settings ("Manage
+     Actions access") grant the project's repository read access.
+   - **In a cloud session**, set in the environment, as the setup script's other secrets are.
+
+2. Install it, one of two ways:
+
+   | | A pinned `npx`, no dependency | A dev dependency |
+   | --- | --- | --- |
+   | How | A script, `"drawing-board": "npx --yes @tinkerbench-studio/drawing-board@0.1.0"`, run as `npm run drawing-board -- check` | `npm install --save-dev @tinkerbench-studio/drawing-board@0.1.0`, run as `npx drawing-board check` |
+   | `npm ci` | Never touches GitHub Packages, so no install anywhere needs the token | Every `npm ci` needs the token: each CI step, every machine, every cloud session |
+   | Integrity | None: the version is pinned but not hashed, and `--yes` skips the prompt | Hashed in the lockfile |
+   | Upgrading | Edit the version in the script | Dependabot or `npm install`, with the lockfile |
+   | Suits | A project that runs the commands by hand while it moves its snapshot over | A project whose CI runs `drawing-board check` |
+
+   Nookivia uses the pinned `npx` for now; a project that adds any dependency from the
+   `@tinkerbench-studio` scope has taken the token cost already, so it should use the dependency.
 
 3. Add `drawing-board.config.json` at the project's root:
 
@@ -104,7 +123,8 @@ Each board has, under `<snapshot>/boards/`:
    | `prototypePages` | Optional. A case-blind regular expression matched against each page's id and name; boards on a matching page are left out of the snapshot (default: a ticket key, such as `NOK-12`) |
    | `tokensBoard` | Optional. A board that shows every token by `--name` and value, checked against the tokens |
 
-4. Run `npx drawing-board check` in CI.
+4. Run the check in CI (`npx drawing-board check`, or the pinned script), with `NODE_AUTH_TOKEN`
+   set to the workflow's `GITHUB_TOKEN` on that step.
 
 The functions behind the commands are exported too (`import { componentProblems, checkProblems } from
 '@tinkerbench-studio/drawing-board'`), for checks a project adds of its own, such as built components
