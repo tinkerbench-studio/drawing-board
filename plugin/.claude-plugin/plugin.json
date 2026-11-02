@@ -1,0 +1,7 @@
+{
+  "name": "drawing-board",
+  "version": "0.1.0",
+  "description": "Design workflows for any project with a design canvas and Storybook: design-change, canvas-sync, flow-pages and ux-picture.",
+  "author": { "name": "tinkerbench-studio" },
+  "repository": "https://github.com/tinkerbench-studio/drawing-board"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "drawing-board",
+  "owner": {
+    "name": "tinkerbench-studio"
+  },
+  "plugins": [
+    {
+      "name": "drawing-board",
+      "source": "./plugin",
+      "description": "Design workflows for any project with a design canvas and Storybook: designing on a prototype page first, keeping the canvas, its committed snapshot and Storybook in step, flow-based canvas pages, and the board-beside-story picture a UX change carries."
+    }
+  ],
+  "metadata": {
+    "description": "Design workflows for projects with a design canvas and Storybook."
+  }
+}
