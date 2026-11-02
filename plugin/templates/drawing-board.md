@@ -19,8 +19,10 @@ skills hold the process. Keep it short, and keep it true.
 
 ## Commands
 
-The snapshot commands come from the `@tinkerbench-studio/drawing-board` package (a dev dependency,
-from GitHub Packages), configured by `drawing-board.config.json` at the project's root.
+The snapshot commands come from the `@tinkerbench-studio/drawing-board` package on GitHub Packages,
+configured by `drawing-board.config.json` at the project's root. Say how this project installs it (a
+dev dependency, or a pinned `npx` script: the drawing-board README compares them) and where its
+token comes from; with the pinned script, the commands below are `npm run drawing-board -- <command>`.
 
 | Step | Command | Notes |
 | --- | --- | --- |
