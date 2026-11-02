@@ -11,19 +11,25 @@ skills hold the process. Keep it short, and keep it true.
 
 ## The snapshot
 
-- Folder: `<path>` (one `.meta.json`, `.map.json` and copy per board, if the project has split it)
-- Hand-kept files: `<path>` (map files, known-gap lists)
-- Generated files, never edited by hand: `<path>`
+- Folder: `<path>`, as `snapshot` in `drawing-board.config.json`
+- Written by `drawing-board snapshot`, never by hand: `boards/<Board>.meta.json`, the copies
+  `boards/<Board>.dc.html`, `boards/support.js`, `tokens.json`, `story-index.json`, `artifact.json`
+- Kept by hand: `boards/<Board>.map.json` (the story, or why there is none) and
+  `unpublished-known.json` (shrink only)
 
 ## Commands
 
+The snapshot commands come from the `@tinkerbench-studio/drawing-board` package (a dev dependency,
+from GitHub Packages), configured by `drawing-board.config.json` at the project's root.
+
 | Step | Command | Notes |
 | --- | --- | --- |
-| Refresh the boards you changed | `npm run design-canvas:snapshot -- --from <folder> --version <version> --boards A.dc.html,B.dc.html` | `--tokens` when the tokens changed. Say "full refresh only" here if `--boards` is not supported yet |
-| Full refresh | `npm run design-canvas:snapshot -- --from <folder> --version <version>` | Catching up, or resolving a conflict |
-| Check | `npm run design-canvas:check` | Also run by CI as: `<job>` |
-| Rebuild the story index | `npm run design-canvas:index` | Or "none" |
-| Compare a board with its story | `npm run design-canvas:compare` | Advisory |
+| Refresh the boards you changed | `npx drawing-board snapshot --from <folder> --version <version> --boards A.dc.html,B.dc.html` | `--tokens` when the tokens changed |
+| Full refresh | `npx drawing-board snapshot --from <folder> --version <version>` | Catching up, or resolving a conflict |
+| Check | `npx drawing-board check` | Also run by CI as: `<job>` |
+| Rebuild the story index | `npx drawing-board index` | After editing a map file's `story`, or merging one |
+| Boards with no story, stories with no board | `npx drawing-board report` | |
+| Compare a board with its story | `<command>` | The project's own; advisory |
 | Make the picture | `<command>` | For `ux-picture` |
 | Upload a picture | `<command>` | Or "attach with `gh --attach`" |
 
