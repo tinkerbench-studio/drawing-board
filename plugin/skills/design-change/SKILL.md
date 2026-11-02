@@ -14,7 +14,9 @@ first for the project's canvas, pages and ticket key.
 
 1. **Make a prototype page for the ticket**, named by its key (`NOK-123`, `TCK-45`). One page per
    ticket, so two tickets' prototypes never sit on the same page. Prototype pages are never read
-   into the snapshot.
+   into the snapshot. A project whose snapshot cannot yet skip per-ticket pages says so in
+   `.claude/drawing-board.md` and names the one page to use instead; follow that, and prefix each
+   copy with the ticket key so two tickets' copies stay apart.
 2. **Copy, do not move.** Copy each board you will change onto it as a new file
    (`Proto<Board>.dc.html`), the whole screen so the change is seen in context. A new screen is
    drawn there from the library's components and tokens.

@@ -34,7 +34,8 @@ skills hold the process. Keep it short, and keep it true.
 | `<id>` | <one line: the journey, start to end> | `<Prefix>*` |
 
 Prototype pages are named `<KEY>-<number>` (for example `NOK-123`), one per ticket, and are never
-read into the snapshot.
+read into the snapshot. (If the snapshot cannot skip those yet, name the one prototype page to use
+instead, and the ticket that will change it.)
 
 ## Stories
 
