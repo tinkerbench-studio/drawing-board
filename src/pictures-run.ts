@@ -7,7 +7,7 @@ import { dirname, extname, join, resolve, sep } from 'node:path'
 
 import { changeNote, compareFile, CONTENT_TYPES, pairPictures, storyIds, storyUrl, storyVariants, type CompareOptions, type StoryShotOptions } from './pictures.ts'
 
-const launch = async () => {
+export const launch = async () => {
   let playwright: typeof import('playwright-core')
   try {
     playwright = await import('playwright-core')
@@ -19,7 +19,7 @@ const launch = async () => {
 }
 
 /** Serves a folder on a free local port, refusing any path outside it. */
-const serve = (root: string): Promise<{ server: Server; base: string }> => {
+export const serve = (root: string): Promise<{ server: Server; base: string }> => {
   const server = createServer((req, res) => {
     const path = resolve(join(root, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)))
     if (path !== root && !path.startsWith(root + sep)) return void res.writeHead(403).end()

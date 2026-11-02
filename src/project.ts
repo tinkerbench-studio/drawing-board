@@ -1,6 +1,6 @@
 // One project's snapshot on disk, read through its config: the files, the story titles and the checks.
 import { existsSync, globSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { coverageProblems, publishedProblems, snapshotProblems, storyIndexProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import type { Config } from './config.ts'
@@ -24,11 +24,12 @@ export const project = (config: Config) => {
   return { file, read, map, metas, copies, copy }
 }
 
-/** The title of every story the config's globs find. */
+/** The title of every story the config's globs find, never looking in node_modules or the built Storybook. */
 export const storyTitles = (config: Config): string[] => {
   const titles = new Set<string>()
+  const skipped = new Set(['node_modules', '.git', basename(config.storybook)])
   for (const pattern of config.stories)
-    for (const path of globSync(pattern, { cwd: config.root })) {
+    for (const path of globSync(pattern, { cwd: config.root, exclude: (name: string) => skipped.has(basename(name)) })) {
       const title = /\btitle:\s*(['"`])(.+?)\1/.exec(readFileSync(join(config.root, path), 'utf8'))?.[2]
       if (title !== undefined) titles.add(title)
     }

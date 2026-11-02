@@ -4,8 +4,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { loadConfig, type Config } from './config.ts'
+import { CONFIG_FILE, loadConfig, type Config } from './config.ts'
 import { compareOptions, storyShotOptions } from './pictures.ts'
+import { loadHooks } from './hooks.ts'
 import { checkProblems, project, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
 import { buildSnapshot, metaPath, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf } from './snapshot.ts'
@@ -17,6 +18,7 @@ const flag = (argv: readonly string[], name: string) => {
 
 const snapshot = (config: Config, argv: readonly string[]) => {
   const { from, version, only, tokens } = snapshotOptions(argv)
+  if (config.artifact === null) throw new SnapshotError(`No canvas link yet: set "artifact" in ${CONFIG_FILE} for the first snapshot (later ones read it from artifact.json).`)
   const p = project(config)
   const map = p.map()
   const read = (path: string) => (existsSync(join(from, 'project', path)) ? readFileSync(join(from, 'project', path), 'utf8') : undefined)
@@ -45,8 +47,10 @@ const snapshot = (config: Config, argv: readonly string[]) => {
   else console.log(`Snapshot of ${config.artifact} version ${version}: ${snap.boards.boards.length} boards, ${screensOf(map).length} copied, ${moved} of them changed (and now at ${version}).`)
 }
 
-const check = (config: Config) => {
-  const problems = checkProblems(config)
+/** The package's checks, then the project's own from its `checks()` hook. */
+const check = async (config: Config) => {
+  const hooks = await loadHooks(config)
+  const problems = [...checkProblems(config), ...((await hooks.checks?.({ config, canvas: project(config) })) ?? [])]
   if (problems.length > 0) {
     console.error(problems.map(problem => `- ${problem}`).join('\n'))
     process.exitCode = 1
@@ -68,29 +72,42 @@ const report = (config: Config) => {
   console.log(['# Boards with no story', '', ...(without.length ? without.map(([f, e]) => `- ${f}: ${String(e.none)}`) : ['_none_']), '', '# Stories no board points at', '', ...(unshown.length ? unshown.map(t => `- ${t}`) : ['_none_']), ''].join('\n'))
 }
 
-const USAGE = 'Usage: drawing-board <snapshot|check|index|report> [--config drawing-board.config.json]\n       drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list\n       drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]'
+const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <file>]
+       drawing-board board-shot [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>]
+       drawing-board compare [--storybook <dir>]
+       drawing-board page-shots [--out <dir>] [--theme <theme>] [--only page,page] [--mark <selector>]
+       drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list
+       drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]
+Settings come from the nearest ${CONFIG_FILE}, every one defaulted (see the README).`
 
-/** The picture commands load the browser code only when they run, so the snapshot commands never need playwright-core. */
-const pictures = async (command: string, argv: readonly string[]) => {
-  const run = await import('./pictures-run.ts')
-  if (command === 'story-shot') await run.storyShot(storyShotOptions(argv))
-  else await run.comparePictures(compareOptions(argv))
+/** The browser commands load the browser code only when they run, so the snapshot commands never need playwright-core. */
+const browserCommand = async (command: string, argv: readonly string[], config: () => Config) => {
+  if (command === 'story-shot') return (await import('./pictures-run.ts')).storyShot(storyShotOptions(argv))
+  if (command === 'compare-pictures') return void (await (await import('./pictures-run.ts')).comparePictures(compareOptions(argv)))
+  const run = await import('./board-shot-run.ts')
+  if (command === 'compare') return void console.log(await run.compareStories(config(), flag(argv, 'storybook')))
+  if (command === 'page-shots') return void (await run.pageShots(config(), run.pageShotsOptions(argv)))
+  const { made, failed } = await run.boardShots(config(), run.boardShotOptions(argv))
+  console.log(made.join('\n'))
+  if (failed.length > 0) throw new Error(`Not made:\n${failed.map(f => `- ${f}`).join('\n')}`)
 }
+
+const BROWSER_COMMANDS = new Set(['story-shot', 'compare-pictures', 'board-shot', 'compare', 'page-shots'])
 
 const main = async (argv: readonly string[]) => {
   const [command = '', ...rest] = argv
-  if (command === 'story-shot' || command === 'compare-pictures') {
+  const config = () => loadConfig(flag(argv, 'config'))
+  if (BROWSER_COMMANDS.has(command)) {
     try {
-      return await pictures(command, rest)
+      return await browserCommand(command, rest, config)
     } catch (error) {
       console.error((error as Error).message)
       process.exitCode = 1
       return
     }
   }
-  const config = () => loadConfig(flag(argv, 'config'))
   if (command === 'snapshot') return snapshot(config(), argv)
-  if (command === 'check') return check(config())
+  if (command === 'check') return await check(config())
   if (command === 'index') return storyIndex(config())
   if (command === 'report') return report(config())
   console.error(USAGE)

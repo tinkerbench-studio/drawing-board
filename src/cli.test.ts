@@ -19,7 +19,7 @@ const canvas = (w: number) => JSON.stringify({ pages: [{ id: 'main' }, { id: 'p'
 const fixture = () => {
   const dir = mkdtempSync(join(tmpdir(), 'drawing-board-project-'))
   const from = mkdtempSync(join(tmpdir(), 'drawing-board-read-'))
-  write(dir, 'drawing-board.config.json', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas', stories: ['stories/*.stories.tsx'] }))
+  write(dir, '.drawing-board', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas' }))
   write(dir, 'stories/a.stories.tsx', "export default { title: 'L/A' }")
   write(dir, 'stories/b.stories.tsx', 'export default { title: "L/B" }')
   write(dir, 'canvas/boards/A.map.json', '{"story":"L/A"}')
@@ -84,7 +84,7 @@ describe('drawing-board', () => {
     expect(refused.stderr).toMatch(/Z\.dc\.html is named to refresh but is not on the canvas/)
     expect(Object.keys(boards(dir)).sort()).toEqual(['A.map.json', 'B.map.json', 'C.map.json'])
     const bare = mkdtempSync(join(tmpdir(), 'drawing-board-bare-'))
-    expect(run(bare, ['check']).stderr).toMatch(/drawing-board\.config\.json was not found/)
+    expect(run(bare, ['snapshot', '--from', bare, '--version', 'v1']).stderr).toMatch(/No canvas link yet: set "artifact" in .drawing-board/)
     expect(run(bare, ['nonsense']).status).toBe(2)
   })
 })

@@ -11,7 +11,7 @@ skills hold the process. Keep it short, and keep it true.
 
 ## The snapshot
 
-- Folder: `<path>`, as `snapshot` in `drawing-board.config.json`
+- Folder: `<path>` (the convention is `design/canvas`; anything else is `snapshot` in `.drawing-board`)
 - Written by `drawing-board snapshot`, never by hand: `boards/<Board>.meta.json`, the copies
   `boards/<Board>.dc.html`, `boards/support.js`, `tokens.json`, `story-index.json`, `artifact.json`
 - Kept by hand: `boards/<Board>.map.json` (the story, or why there is none) and
@@ -19,23 +19,26 @@ skills hold the process. Keep it short, and keep it true.
 
 ## Commands
 
-The snapshot commands come from the `@tinkerbench-studio/drawing-board` package on GitHub Packages,
-configured by `drawing-board.config.json` at the project's root. Say how this project installs it (a
-dev dependency, or a pinned `npx` script: the drawing-board README compares them) and where its
-token comes from; with the pinned script, the commands below are `npm run drawing-board -- <command>`.
+Every command is the `@tinkerbench-studio/drawing-board` package's, from GitHub Packages, working by
+convention; `.drawing-board` holds only this project's differences (the drawing-board README lists the
+conventions). Say how this project installs it (a dev dependency, or a pinned `npx` script: the README
+compares them) and where its token comes from; with the pinned script, the commands below are
+`npm run drawing-board -- <command>`. What only this project can supply (extra checks, its pages for
+`page-shots`) is in its hook module: `<path>`, or "none".
 
 | Step | Command | Notes |
 | --- | --- | --- |
 | Refresh the boards you changed | `npx drawing-board snapshot --from <folder> --version <version> --boards A.dc.html,B.dc.html` | `--tokens` when the tokens changed |
 | Full refresh | `npx drawing-board snapshot --from <folder> --version <version>` | Catching up, or resolving a conflict |
-| Check | `npx drawing-board check` | Also run by CI as: `<job>` |
+| Check | `npx drawing-board check` | The package's checks and the project's `checks()`. Also run by CI as: `<job>` |
 | Rebuild the story index | `npx drawing-board index` | After editing a map file's `story`, or merging one |
 | Boards with no story, stories with no board | `npx drawing-board report` | |
-| Compare a board with its story | `<command>` | Advisory. The project's own command, which draws each story its own way and passes the markup to the package's `comparePages` |
-| A story's pictures (dark, light, phone) | `npx drawing-board story-shot <storybook-static-dir> <story-id> <out.png>` | Needs `playwright-core` and a Chromium; `--list` for the ids |
+| Compare each board with its story | `npx drawing-board compare` | Advisory; needs a built Storybook |
+| The board-beside-story picture | `npx drawing-board board-shot --board <Board>.dc.html` | For `ux-picture`: banners, numbered boxes, the table |
+| The pages' pictures | `npx drawing-board page-shots` | From the hook's `pages()`; or "none" |
+| A story's pictures | `npx drawing-board story-shot <storybook-static-dir> <story-id> <out.png>` | `--list` for the ids |
 | Before and after, changes outlined | `npx drawing-board compare-pictures <before-dir> <after-dir> <out-dir>` | Pairs pictures by name |
-| Make the board-beside-story picture | `<command>` | For `ux-picture`; the project's own |
-| Upload a picture | `<command>` | Or "attach with `gh --attach`" |
+| Upload a picture | `<command>` | The project's own, or "attach with `gh --attach`" |
 
 ## Pages
 
