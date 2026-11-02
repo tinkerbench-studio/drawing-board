@@ -65,7 +65,7 @@ with no refresh after it is unfinished work, whatever the ticket.
 2. **Does the change alter what the board draws?** Wording, a heading, a control, a label, a
    column, their order, a colour, a state, a figure. If not, stop.
 3. **Say which side is right** and act on the table below.
-4. **Compare** the board with its story with the project's compare command, and put any difference
+4. **Compare** the board with its story with `drawing-board compare` (or the command `.claude/drawing-board.md` names), and put any difference
    you leave in the pull request with which side is right and why.
 5. A build that adds a story maps its board in the same pull request, and rebuilds the story index
    if the project has one.

@@ -55,7 +55,7 @@ cannot be rendered from the snapshot, a new screen (the after alone), or a copy 
 
 ## Making it
 
-Use the project's picture command where it has one. By hand: serve the snapshot's board copies
+`drawing-board board-shot --board <Board>.dc.html` makes it from the committed snapshot and a built Storybook: the banners, the numbered colour-coded boxes and the table, with the differences from `<snapshot>/differences/<Board>.json` or found by comparing wording. Check its table against the picture all the same. By hand: serve the snapshot's board copies
 (never the live canvas) over HTTP and open the board in Chromium; shoot the story from Storybook's
 `iframe.html?id=<story id>`, at full height; add the banners and boxes in the page before the shot,
 then join the two images.

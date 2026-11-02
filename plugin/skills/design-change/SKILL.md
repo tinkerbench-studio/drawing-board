@@ -44,7 +44,7 @@ first for the project's canvas, pages and ticket key.
 
 The same few findings recur after the push. Check them yourself on the stories you built:
 
-1. **Board beside story.** Run the project's compare. A difference you leave goes in the pull
+1. **Board beside story.** Run `drawing-board compare` (or the command `.claude/drawing-board.md` names). A difference you leave goes in the pull
    request with which side is right.
 2. **Controls.** Every input, select, textarea and button is styled by the project's classes, not
    left as the browser's.
