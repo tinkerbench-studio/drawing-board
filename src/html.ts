@@ -1,5 +1,6 @@
-// The exact markup of a component a board marks with `data-component="Name"`, as canonical text, so a board's
-// version of a component and the built one can be compared.
+// Reading a board's markup: the exact markup of a component it marks with `data-component="Name"`, as canonical
+// text, so a board's version of a component and the built one can be compared; and the fixed wording and structure
+// of a screen, so a board and its story can be.
 import { parse, parseFragment } from 'parse5'
 
 type Node = { nodeName: string; tagName?: string; attrs?: { name: string; value: string }[]; childNodes?: Node[]; value?: string }
@@ -48,4 +49,30 @@ export const componentMarkup = (source: string): Record<string, string> => {
     if (name !== undefined && !(name in result)) result[name] = (element.childNodes ?? []).map(canonicalNode).filter(Boolean).join('')
   }
   return result
+}
+
+export type OutlineItem = { kind: 'heading' | 'button' | 'link' | 'label' | 'item'; text: string }
+
+/** Text that is a value, not wording: a digit, an address, a currency sign, a placeholder, a quotation, or a paragraph. */
+export const isValue = (text: string): boolean => /[\d@£$€"“”]|\{\{/.test(text) || text.length > 90
+
+const textOf = (node: Node): string => ((node.nodeName === '#text' ? node.value : (node.childNodes ?? []).map(textOf).join(' ')) ?? '').replace(/\s+/g, ' ').trim()
+
+/** The fixed wording and structure of a screen, in document order: headings, buttons, links, field labels, column heads and list items, leaving values out. */
+export const outline = (html: string): OutlineItem[] => {
+  const items: OutlineItem[] = []
+  for (const element of elementsOf(parse(html) as unknown as Node)) {
+    const tag = element.tagName!
+    const classes = (attr(element, 'class') ?? '').split(/\s+/)
+    let kind: OutlineItem['kind'] | undefined
+    if (/^h[1-6]$/.test(tag)) kind = 'heading'
+    else if (tag === 'button' || (tag === 'a' && (classes.includes('button') || classes.includes('btn')))) kind = 'button'
+    else if (tag === 'a') kind = 'link'
+    else if (tag === 'label' || tag === 'th') kind = 'label'
+    else if (tag === 'li') kind = 'item'
+    if (kind === undefined) continue
+    const text = textOf(element)
+    if (text !== '' && !isValue(text)) items.push({ kind, text })
+  }
+  return items
 }

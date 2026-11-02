@@ -31,8 +31,10 @@ token comes from; with the pinned script, the commands below are `npm run drawin
 | Check | `npx drawing-board check` | Also run by CI as: `<job>` |
 | Rebuild the story index | `npx drawing-board index` | After editing a map file's `story`, or merging one |
 | Boards with no story, stories with no board | `npx drawing-board report` | |
-| Compare a board with its story | `<command>` | The project's own; advisory |
-| Make the picture | `<command>` | For `ux-picture` |
+| Compare a board with its story | `<command>` | Advisory. The project's own command, which draws each story its own way and passes the markup to the package's `comparePages` |
+| A story's pictures (dark, light, phone) | `npx drawing-board story-shot <storybook-static-dir> <story-id> <out.png>` | Needs `playwright-core` and a Chromium; `--list` for the ids |
+| Before and after, changes outlined | `npx drawing-board compare-pictures <before-dir> <after-dir> <out-dir>` | Pairs pictures by name |
+| Make the board-beside-story picture | `<command>` | For `ux-picture`; the project's own |
 | Upload a picture | `<command>` | Or "attach with `gh --attach`" |
 
 ## Pages

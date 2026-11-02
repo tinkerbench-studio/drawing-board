@@ -61,6 +61,25 @@ board so two pull requests conflict only when they change the same board.
 | `drawing-board index` | Rewrites `story-index.json` from the map files, no canvas needed |
 | `drawing-board report` | Boards with no story, and stories no board points at |
 
+And two picture commands for a UX change, which need no config but do need `playwright-core` (an
+optional peer dependency: `npm install --save-dev playwright-core`) and a Chromium, from
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when set:
+
+| Command | What it does |
+| --- | --- |
+| `drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light\|dark]` | One story from a built Storybook, on its own page. With neither flag it writes `<out>-dark.png`, `<out>-light.png` and `<out>-phone.png` (dark, 390 px); the theme is passed as Storybook's `theme` global. `--list` prints the story ids |
+| `drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]` | Each picture in both folders, paired by name, before beside after under banners, with what changed outlined in red. The rows are lined up first, so a change that pushes a page down outlines only the change. `--from-x` leaves out the columns to its left (a sidebar the same on both sides); `--left` and `--right` relabel the banners (`BOARD`, `STORY`) |
+
+A fix's pictures: build Storybook at the merge base and on the branch, `story-shot` the same story
+from each into `shots/before` and `shots/after`, then `compare-pictures shots/before shots/after
+<out>`.
+
+The comparison of a board's wording with its story's is a library function, since each project draws
+its stories its own way: `comparePages(map, boardHtml, stories)` takes the map, a reader of the
+board copies and each story's markup by title, and lists the headings, buttons, links, labels and
+list items only on one side, leaving values out (`decided` in a map entry keeps a difference that
+was agreed apart); `comparisonReport` writes it as Markdown.
+
 Each board has, under `<snapshot>/boards/`:
 
 - `<Board>.meta.json`, written by a refresh: title, page, size and, for a board a story shows, its

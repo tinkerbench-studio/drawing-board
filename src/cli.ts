@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // drawing-board <snapshot|check|index|report> [--config <file>]: the committed snapshot of a design canvas.
+// drawing-board <story-shot|compare-pictures> …: pictures for a UX change, with no config.
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { loadConfig, type Config } from './config.ts'
+import { compareOptions, storyShotOptions } from './pictures.ts'
 import { checkProblems, project, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
 import { buildSnapshot, metaPath, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf } from './snapshot.ts'
@@ -66,10 +68,26 @@ const report = (config: Config) => {
   console.log(['# Boards with no story', '', ...(without.length ? without.map(([f, e]) => `- ${f}: ${String(e.none)}`) : ['_none_']), '', '# Stories no board points at', '', ...(unshown.length ? unshown.map(t => `- ${t}`) : ['_none_']), ''].join('\n'))
 }
 
-const USAGE = 'Usage: drawing-board <snapshot|check|index|report> [--config drawing-board.config.json]'
+const USAGE = 'Usage: drawing-board <snapshot|check|index|report> [--config drawing-board.config.json]\n       drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list\n       drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]'
 
-const main = (argv: readonly string[]) => {
-  const [command] = argv
+/** The picture commands load the browser code only when they run, so the snapshot commands never need playwright-core. */
+const pictures = async (command: string, argv: readonly string[]) => {
+  const run = await import('./pictures-run.ts')
+  if (command === 'story-shot') await run.storyShot(storyShotOptions(argv))
+  else await run.comparePictures(compareOptions(argv))
+}
+
+const main = async (argv: readonly string[]) => {
+  const [command = '', ...rest] = argv
+  if (command === 'story-shot' || command === 'compare-pictures') {
+    try {
+      return await pictures(command, rest)
+    } catch (error) {
+      console.error((error as Error).message)
+      process.exitCode = 1
+      return
+    }
+  }
   const config = () => loadConfig(flag(argv, 'config'))
   if (command === 'snapshot') return snapshot(config(), argv)
   if (command === 'check') return check(config())
@@ -80,7 +98,7 @@ const main = (argv: readonly string[]) => {
 }
 
 try {
-  main(process.argv.slice(2))
+  await main(process.argv.slice(2))
 } catch (error) {
   if (!(error instanceof SnapshotError)) throw error
   console.error(error.message)
