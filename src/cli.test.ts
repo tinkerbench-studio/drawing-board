@@ -88,3 +88,15 @@ describe('drawing-board', () => {
     expect(run(bare, ['nonsense']).status).toBe(2)
   })
 })
+
+describe('the picture commands', () => {
+  it('run with no config, and say how to call them when the arguments are missing', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'drawing-board-bare-'))
+    const compare = run(bare, ['compare-pictures', 'only-one'])
+    expect(compare.status).toBe(1)
+    expect(compare.stderr).toMatch(/Usage: drawing-board compare-pictures/)
+    const shot = run(bare, ['story-shot', bare, '--list'])
+    expect(shot.status).toBe(1)
+    expect(shot.stderr).toMatch(/not a built Storybook/)
+  })
+})

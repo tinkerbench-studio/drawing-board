@@ -22,7 +22,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # The picture tests drive the runner's own Chrome.
       - run: npm test
+        env:
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/google-chrome
       - run: npm run build
 
   publish:
