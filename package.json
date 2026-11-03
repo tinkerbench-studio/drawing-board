@@ -1,6 +1,6 @@
 {
   "name": "@tinkerbench-studio/drawing-board",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "The committed snapshot of a claude.ai design canvas, one set of files per board, and the checks that keep it, the canvas and Storybook in step.",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "dependencies": {
     "parse5": "7.3.0"

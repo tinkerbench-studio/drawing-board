@@ -50,7 +50,7 @@ keeps what is particular to it in one short file and one config file.
 
 ## The commands: `@tinkerbench-studio/drawing-board`
 
-This repository is also an npm package, published to GitHub Packages, with every command the skills
+This repository is also an npm package, run from its public git tag (and published to GitHub Packages), with every command the skills
 rely on. The canvas is private, so CI reads a committed snapshot of it, kept as one set of files per
 board so two pull requests conflict only when they change the same board.
 
@@ -132,34 +132,23 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
 
 ### Setting it up in a project
 
-1. Point npm at GitHub Packages for the scope, in the project's `.npmrc`:
+1. Run it from its public git tag, which needs no registry and no token: npm fetches the tag from
+   GitHub and its `prepare` script builds `dist/`. Add a script to the project's `package.json`:
 
+   ```json
+   "drawing-board": "npx --yes -p github:tinkerbench-studio/drawing-board#v0.3.1 -p playwright-core@<version> -p esbuild@<version> drawing-board"
    ```
-   @tinkerbench-studio:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
-   ```
 
-   npm runs normally with `NODE_AUTH_TOKEN` unset; it is only read when a package from the scope is
-   fetched. Where it is needed:
+   npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
+   for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
+   as `npm run drawing-board -- check`. `npm ci` never installs it. The tag is pinned but not hashed,
+   and `--yes` skips the prompt; upgrading is editing the tag in the script.
 
-   - **Locally**, a token with `read:packages` and nothing else, not your full `gh auth token`: the
-     package runs with whatever token the environment holds.
-   - **In GitHub Actions**, the workflow's `GITHUB_TOKEN`, once the package's settings ("Manage
-     Actions access") grant the project's repository read access.
-   - **In a cloud session**, set in the environment, as the setup script's other secrets are.
-
-2. Install it, one of two ways:
-
-   | | A pinned `npx`, no dependency | A dev dependency |
-   | --- | --- | --- |
-   | How | A script, `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.3.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"` (npx cannot see the project's node_modules, so the optional peers come with it; pin them to the project's own), run as `npm run drawing-board -- check` | `npm install --save-dev @tinkerbench-studio/drawing-board@0.3.0` (with `playwright-core` for the browser commands and `esbuild` for hooks), run as `npx drawing-board check` |
-   | `npm ci` | Never touches GitHub Packages, so no install anywhere needs the token | Every `npm ci` needs the token: each CI step, every machine, every cloud session |
-   | Integrity | None: the version is pinned but not hashed, and `--yes` skips the prompt | Hashed in the lockfile |
-   | Upgrading | Edit the version in the script | Dependabot or `npm install`, with the lockfile |
-   | Suits | A project that runs the commands by hand while it moves its snapshot over | A project whose CI runs `drawing-board check` |
-
-   Nookivia uses the pinned `npx` for now; a project that adds any dependency from the
-   `@tinkerbench-studio` scope has taken the token cost already, so it should use the dependency.
+2. The package is also published to GitHub Packages, whose npm registry asks for a token even for a
+   public package. Use it only if you want it as a dev dependency hashed in the lockfile: map the
+   scope in `.npmrc` (`@tinkerbench-studio:registry=https://npm.pkg.github.com` and
+   `//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}`), and then every `npm ci` needs a token with
+   `read:packages`.
 
 3. Add a `.drawing-board` only for what differs from the conventions above. Nookivia's, for example:
 
@@ -171,16 +160,15 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    }
    ```
 
-4. Run the check in CI (`npx drawing-board check`, or the pinned script), with `NODE_AUTH_TOKEN`
-   set to the workflow's `GITHUB_TOKEN` on that step.
+4. Run the check in CI with the pinned script; it needs no token.
 
 The functions behind the commands are exported too (`'@tinkerbench-studio/drawing-board'`; the
 browser half from `'@tinkerbench-studio/drawing-board/pictures'`).
 
 ### Releasing
 
-Bump `version` in `package.json`, merge, then push the tag `v<version>`. CI tests it and publishes it
-to GitHub Packages.
+Bump `version` in `package.json`, merge, then push the tag `v<version>`. Projects run the tag itself,
+so it is the release; CI also tests it and publishes it to GitHub Packages.
 
 ## The commands a project provides
 
