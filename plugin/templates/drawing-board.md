@@ -21,8 +21,8 @@ skills hold the process. Keep it short, and keep it true.
 
 Every command is the `@tinkerbench-studio/drawing-board` package's, working by convention;
 `.drawing-board` holds only this project's differences (the drawing-board README lists the
-conventions). Say how this project runs it (a pinned `npx` script from the public git tag, which needs
-no token, or a dev dependency from GitHub Packages, which does: the README says which suits); with the
+conventions). Say how this project installs it from GitHub Packages (a pinned `npx` script or a dev
+dependency: the README compares them) and where its token comes from; with the
 pinned script, the commands below are
 `npm run drawing-board -- <command>`. What only this project can supply (extra checks, its pages for
 `page-shots`) is in its hook module: `<path>`, or "none".
