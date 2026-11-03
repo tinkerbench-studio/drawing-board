@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "description": "The committed snapshot of a claude.ai design canvas, one set of files per board, and the checks that keep it, the canvas and Storybook in step.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tinkerbench-studio/drawing-board.git"
