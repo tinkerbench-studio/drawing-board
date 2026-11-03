@@ -187,3 +187,7 @@ to GitHub Packages.
 The skills name steps, and `.claude/drawing-board.md` maps each step to a command, which is
 `drawing-board`'s by convention. A project names its own only where it differs (uploading a picture,
 say), and says so in that file.
+
+## License
+
+[MIT](LICENSE) © Maddie Carter-Smith
