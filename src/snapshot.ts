@@ -218,7 +218,7 @@ export const ARTIFACT_RECORD = 'artifact.json'
 /**
  * What `artifact.json` holds: the canvas's id in the config, its link, the version read, the version of the last full
  * refresh, the files the canvas held (every file under `project/`), its boards outside prototype pages and the design
- * systems installed on it. A record from before 0.5.0 holds only `artifact`, so every field may be missing.
+ * systems installed on it. A record written by an earlier release holds only `artifact`, so every field may be missing.
  */
 export type ArtifactRecord = { canvas?: string; artifact?: string; version?: string; fullVersion?: string; files?: number; boards?: string[]; designSystems?: Record<string, string> }
 

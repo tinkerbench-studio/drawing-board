@@ -8,18 +8,31 @@ description: How a design change is made in a project with a design canvas — a
 The canvas is where a design is decided. The code follows the board, never the other way round,
 so a design change starts on the canvas and reaches the code last. `canvas-sync` has the mechanics
 of publishing and refreshing; this skill is the order to work in. Read `.claude/drawing-board.md`
-first for the project's canvas, pages and ticket key.
+first for the project's canvases, pages and ticket key.
+
+## Before you publish: the free files
+
+A canvas holds at most 512 files of its own, and a publish over that is refused with a 422. A design
+adds about four files: dark, light and a 390 px view of each. Before you publish a prototype, and
+again before you fold one in, check that the canvas you publish to has enough free files: run
+`drawing-board status --from <folder>` on a fresh read for the exact count (`drawing-board check`
+gives the count at the last refresh). When it has too few, stop: set the ticket to need a person,
+say how many files are free and how many the design needs, and do not publish. Never delete another
+board to make room; a board is deleted only when its design is deprecated.
 
 ## The flow
 
 1. **Make a prototype page for the ticket**, named by its key (`NOK-123`, `TCK-45`). One page per
-   ticket, so two tickets' prototypes never sit on the same page. Prototype pages are never read
+   ticket, so two tickets' prototypes never sit on the same page. When the project has a
+   `prototypes` canvas, the page goes there; otherwise on the main canvas, as before. Prototype pages are never read
    into the snapshot. A project whose snapshot cannot yet skip per-ticket pages says so in
    `.claude/drawing-board.md` and names the one page to use instead; follow that, and prefix each
    copy with the ticket key so two tickets' copies stay apart.
 2. **Copy, do not move.** Copy each board you will change onto it as a new file
    (`Proto<Board>.dc.html`), the whole screen so the change is seen in context. A new screen is
-   drawn there from the library's components and tokens.
+   drawn there from the library's components and tokens. When a design system is installed on the
+   canvas, mount its components (`<x-import component-from-global-scope="…">`) rather than copying
+   their markup, so the board follows the system.
 3. **Draw every variant the change needs**: dark and light where the project has both, and a
    phone view of each. Where there is a real choice, show each option beside the other and say
    what each costs.
@@ -32,9 +45,11 @@ first for the project's canvas, pages and ticket key.
 6. **Show the owner** the canvas link, what changed and what is open. Do not build, and do not
    open a pull request that changes what a person sees, from a prototype.
 7. **Apply feedback** until the owner agrees.
-8. **On the go-ahead, fold in, in one step:** move the agreed boards onto their flow's page
-   (`flow-pages`), delete the prototype page, publish only the files you changed, and refresh the
-   snapshot for those boards (`canvas-sync`). Map each new board to its story, or say it is not
+8. **On the go-ahead, fold in, in one step:** check the free files on the main canvas first (above).
+   Move the agreed boards onto their flow's page (`flow-pages`), delete the prototype page, publish
+   only the files you changed, and refresh the snapshot for those boards (`canvas-sync`). With a
+   `prototypes` canvas, fold-in copies the agreed boards to the main canvas and removes the prototype
+   page from the prototypes canvas in the same change. Map each new board to its story, or say it is not
    built yet. Record the folded boards and the canvas version on the ticket. A design-only ticket
    still refreshes the snapshot in its own pull request; it does not leave that to the build.
 9. **Then the code.** Build the agreed board as a component or page in Storybook from the library's

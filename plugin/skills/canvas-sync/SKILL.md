@@ -27,12 +27,27 @@ snapshotted and committed is invisible to every check.
 Anything already built and merged is the code's; a design not yet built is the canvas's. Ask the
 owner only when you cannot tell.
 
+The canvas stays the source of truth after a design is built: its board is kept, refreshed and
+checked, not retired once the code exists. **Delete a board only when its design is deprecated**
+(the screen or state is gone from the product), never to make room.
+
+A project may have several canvases (`.claude/drawing-board.md`, "Canvases"): `main` for the built
+designs, `prototypes` for designs under way, `reference` for boards that are not app screens. Each
+command takes `--canvas <id>` for one other than main.
+
 ## Every publish ends with a refresh
 
 Design work is any publish to the canvas: a new or changed board, a token, a sample mark, a fix to
 a board someone else broke. **The same change refreshes the snapshot and commits it.** A publish
 with no refresh after it is unfinished work, whatever the ticket.
 
+- **See what changed first.** Read the canvas into a folder and run `drawing-board status --from
+  <folder>` (it writes nothing). It lists boards added, removed or moved, copies changed on the
+  canvas, the design systems installed, and the exact files in use.
+- **Check the free files before you publish.** A canvas holds at most 512 files of its own, and a
+  publish over that is refused (422). `status --from` gives the exact count; `check` gives the count
+  the last refresh recorded. Fewer free than your change adds: stop and tell the owner. Do not delete
+  boards to make room.
 - **Read before you publish.** Read each board you will change from the canvas, not from your
   checkout, in the same session. Publish only the boards you changed. Never republish a board you
   did not change: a whole-file send from an older copy silently undoes someone else's design.
@@ -46,7 +61,11 @@ with no refresh after it is unfinished work, whatever the ticket.
   other open pull requests published but have not merged; a partial refresh leaves every other
   board's files byte for byte as committed, so two pull requests never carry each other's design
   changes. Use a full refresh only to catch up with the whole canvas or to resolve a conflict. If
-  the project has no partial refresh yet, say so in the pull request and expect conflicts.
+  the project has no partial refresh yet, say so in the pull request and expect conflicts. A
+  partial refresh names the boards on the canvas it did not add; leave them to a full refresh.
+- **A refresh writes the record**, `artifact.json`: the canvas, the version read, the last full
+  refresh's version, the files in use, the boards and the design systems installed. Commit it with
+  the rest; never edit it by hand.
 - **Refresh first, then design.** If the snapshot is older than the canvas before you start on a
   board, refresh it first, so differences you did not make are seen now, not found later.
 - **A failing check after a refresh is the work.** Decide from the table above whether the code or
@@ -94,6 +113,11 @@ with no refresh after it is unfinished work, whatever the ticket.
 ## Traps
 
 - **Every publish is a new canvas version.** Refresh after your own.
+- **A canvas holds 512 files.** Every board, `canvas.json`, the tokens and an installed design
+  system's files count. `check` warns when few are free; a warning does not fail it, but read it.
+- **`check` warnings are not problems.** Lines starting `warning: ` never fail the check: missing
+  boards a full refresh adds, a design system at another version, few free files. Act on them in
+  the change that caused them.
 - **`data-sample` goes on a leaf element**, written out, never on a `{{hole}}`.
 - **Fonts and images from the canvas (`/_blob/…`) do not load offline**, so a board rendered in CI
   falls back to system fonts.
