@@ -11,7 +11,7 @@ skills hold the process. Keep it short, and keep it true.
 
 ## The snapshot
 
-- Folder: `<path>` (the convention is `design/canvas`; anything else is `snapshot` in `.drawing-board`)
+- Folder: `<path>` (the convention is `design/canvas`; anything else is `snapshot` in `drawing-board.config.json`)
 - Written by `drawing-board snapshot`, never by hand: `boards/<Board>.meta.json`, the copies
   `boards/<Board>.dc.html`, `boards/support.js`, `tokens.json`, `story-index.json`, `artifact.json`
 - Kept by hand: `boards/<Board>.map.json` (the story, or why there is none) and
@@ -20,7 +20,7 @@ skills hold the process. Keep it short, and keep it true.
 ## Commands
 
 Every command is the `@tinkerbench-studio/drawing-board` package's, working by convention;
-`.drawing-board` holds only this project's differences (the drawing-board README lists the
+`drawing-board.config.json` (the earlier name `.drawing-board` is still read) holds only this project's differences (the drawing-board README lists the
 conventions). Say how this project installs it from GitHub Packages (a pinned `npx` script or a dev
 dependency: the README compares them) and where its token comes from; with the
 pinned script, the commands below are

@@ -55,12 +55,12 @@ rely on. The canvas is private, so CI reads a committed snapshot of it, kept as 
 board so two pull requests conflict only when they change the same board.
 
 **Convention over configuration.** Every command works in a project laid out the conventional way,
-with no settings at all. A project that differs says only how, in a `.drawing-board` file (below).
+with no settings at all. A project that differs says only how, in a `drawing-board.config.json` file (below).
 
 | Command | What it does |
 | --- | --- |
 | `drawing-board snapshot --from <folder> --version <version> [--boards A.dc.html,B.dc.html [--tokens]]` | Writes the snapshot from a folder read from the canvas (`project/canvas.json`, the tokens, each mapped board, `artifact-type/dc-runtime.js`). With `--boards`, rewrites only those boards and leaves every other board's files byte for byte. Refuses, writing nothing, a board it cannot find |
-| `drawing-board check` | Every board is mapped; every story it names exists; every mapped board's copy was read by a refresh (its hash matches, whatever the line endings); the story index, samples and components match the copies; the tokens board shows every token. Then the project's own checks (`checks()`, below). Exits 1 with each problem named |
+| `drawing-board check` | Every board is mapped; every story it names exists; every mapped board's copy was read by a refresh (its hash matches, whatever the line endings); the story index, samples and components match the copies; the tokens board shows every token; the optional checks the project turned on (`checks`, below). Then the project's own checks (`checks()`, below). Exits 1 with each problem named |
 | `drawing-board index` | Rewrites `story-index.json` from the map files, no canvas needed |
 | `drawing-board report` | Boards with no story, and stories no board points at |
 
@@ -93,10 +93,14 @@ Each board has, under `<snapshot>/boards/`:
   its full-page story's export, `"decided"`), or `{"none": "why"}`.
 - `<Board>.dc.html`, the copy, for a board a story shows.
 
-### The conventions, and `.drawing-board`
+### The conventions, and `drawing-board.config.json`
 
-The commands look for `.drawing-board` (JSON) in the working folder and each folder above it. With
-none, every setting is its convention. An unknown setting is refused, so a typo is not ignored.
+The commands look for `drawing-board.config.json` (JSON) in the working folder and each folder above
+it. With none, every setting is its convention. **`drawing-board.config.json` is the preferred name.**
+`.drawing-board` is the earlier name and is still read, kept for compatibility: where both are in one
+folder `drawing-board.config.json` wins and the other is ignored, and a nearer folder's file of either
+name wins over a farther one's. `--config <file>` reads either name. New projects should use the
+preferred name; an existing `.drawing-board` needs no change. An unknown setting is refused, so a typo is not ignored.
 
 | Setting | Convention | What it is |
 | --- | --- | --- |
@@ -111,6 +115,27 @@ none, every setting is its convention. An unknown setting is refused, so a typo 
 | `tokensBoard` | None | A board that shows every token by `--name` and value, checked against the tokens |
 | `themes` | None | The themes `page-shots` draws, such as `["dark", "light"]` |
 | `hooks` | `<snapshot>/drawing-board.{ts,tsx,mts,mjs,js}` | The project's hook module |
+| `checks` | None (all off) | The optional generic checks `drawing-board check` runs, below |
+
+### Optional checks: the `checks` setting
+
+Small checks every project could use, each off until it is named in `checks`, and each adding lines to
+`drawing-board check`'s problems:
+
+```json
+{ "checks": { "repeatedSampleKeys": true, "outlineSelectors": true, "passedSamples": true, "tokenThemes": true, "tokensCss": ["src/**/*.css"] } }
+```
+
+| Flag | What it checks |
+| --- | --- |
+| `repeatedSampleKeys` | No committed copy uses a `data-sample` key twice. The snapshot refuses a repeat anyway; this names the board and key and how to fix it (numbered keys), and reports it on its own, before the snapshot comparison would stop at its plainer refusal |
+| `outlineSelectors` | A board's map entry `outline` (`{ "board": [selectors], "story": [selectors] }`, for a board with a story) has readable selectors (tags, `.classes`, `#ids`, `[attributes]`, spaces for "inside") and each board selector names something in the board's copy |
+| `passedSamples` | A `<dc-import>` passing a value with `data-sample-<prop>="group.name"` is well formed: the prop is passed, the key is `group.name`, used once, and the value is not empty or a `{{hole}}`. `snapshot` reads only leaf `data-sample` marks, so these values are not in `meta.json`; this only checks them (`passedSamples` is exported for a project to read them) |
+| `tokenThemes` | Every colour in `tokens.json` has a string value for every theme listed in `color.themes` |
+| `tokensCss` | A list of stylesheet globs from the project folder: each canvas colour and font family is declared as `--name` with the same value, and each radius and shadow is used (`border-radius`, `box-shadow`). A glob list that finds no file is a problem. Reads `color.tokens`, `type.families`, `radius.tokens` and `shadow.tokens`; a section the tokens lack is skipped |
+
+The functions are exported too (`repeatedSampleKeys`, `outlineProblems`, `passedSamples`,
+`themeValueProblems`, `tokenCssProblems`).
 
 ### Hooks: what only the project can supply
 
@@ -176,7 +201,7 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    (`npm install --save-dev @tinkerbench-studio/drawing-board@0.4.0`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
-3. Add a `.drawing-board` only for what differs from the conventions above. Nookivia's, for example:
+3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:
 
    ```json
    {
