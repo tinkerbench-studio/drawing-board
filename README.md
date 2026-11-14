@@ -184,8 +184,11 @@ folder holds (`project/ds/**`, assets); or the folder's own file count, when tha
   say the canvas holds at least that many files.
 - **A partial refresh** reads only a few boards, so its folder often lacks files a full read held. It
   takes the files that are not boards from the last record as a floor: the boards `canvas.json` lists
-  now, plus the last `files` less the last `canvasBoards`. It keeps the last `unread` when it uses the
-  floor. A full refresh stores the count as counted. A count kept by the floor can stay too high
+  now, plus the last `files` less the last `canvasBoards`, plus the files it read of each design
+  system the last count left out (one installed since, or one the last record listed as `unread`).
+  When it uses the floor, `unread` is the last one, plus each such design system it did not read,
+  less the ones it did, and only design systems `canvas.json` still lists. A full refresh stores the
+  count as counted. A count kept by the floor can stay too high
   after files are removed from the canvas, until the next full refresh. A record from before
   `canvasBoards` gives no floor, so the first partial refresh after upgrading stores what it counted.
 

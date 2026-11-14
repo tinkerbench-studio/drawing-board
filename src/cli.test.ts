@@ -231,6 +231,28 @@ describe('the file count', () => {
     expect(run(dir, ['check']).stdout).toContain('Canvas files: 38 of 512 in use, 474 free (canvas version v2).')
   })
 
+  it('counts a design system installed since the last record on top of the floor, or says at least when it was not read', () => {
+    const { dir, from } = fixture()
+    const systems = (...namespaces: string[]) => JSON.stringify({ ...JSON.parse(canvas(1)), designSystems: namespaces.map(namespace => ({ namespace, version: '1' })) })
+    write(from, 'project/canvas.json', systems('acme'))
+    for (let n = 0; n < 30; n++) write(from, `project/ds/acme/f${n}.js`, '//')
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    expect(record(dir)).toMatchObject({ files: 36, canvasBoards: 4 })
+    const small = mkdtempSync(join(tmpdir(), 'drawing-board-small-'))
+    write(small, 'project/canvas.json', systems('acme', 'beta'))
+    write(small, 'project/tokens.json', readFileSync(join(from, 'project/tokens.json'), 'utf8'))
+    write(small, 'project/A.dc.html', board('old'))
+    run(dir, ['snapshot', '--from', small, '--version', 'v2', '--boards', 'A.dc.html'])
+    expect(record(dir)).toMatchObject({ files: 36, unread: ['beta'] })
+    expect(run(dir, ['check']).stdout).toContain('Canvas files: at least 36 of 512 in use, at most 476 free (canvas version v2): no files of the design system beta under project/ds/ were read')
+    for (let n = 0; n < 10; n++) write(small, `project/ds/beta/f${n}.js`, '//')
+    run(dir, ['snapshot', '--from', small, '--version', 'v3', '--boards', 'A.dc.html'])
+    // beta was recorded unread, so the floor did not hold its files: they go on top, and the count is no longer a lower bound.
+    expect(record(dir)).toMatchObject({ files: 46 })
+    expect(record(dir).unread).toBeUndefined()
+    expect(run(dir, ['check']).stdout).toContain('Canvas files: 46 of 512 in use, 466 free (canvas version v3).')
+  })
+
   it('stores the count as counted on the first partial refresh after an old record', () => {
     const { dir, from } = fixture()
     run(dir, ['snapshot', '--from', from, '--version', 'v1'])

@@ -260,8 +260,12 @@ export const designSystemsOf = (canvas: unknown): Record<string, string> => {
   return sortedRecord(list.filter(isRecord).flatMap(d => (typeof d.namespace === 'string' && typeof d.version === 'string' ? [[d.namespace, d.version] as [string, string]] : [])))
 }
 
-/** How many files a canvas holds, from a read of it, and how many of them are boards. `unread` names each installed design system whose files the read does not hold, so `files` is then a lower bound. */
-export type FileCount = { files: number; boards: number; unread: string[] }
+/**
+ * How many files a canvas holds, from a read of it, and how many of them are boards. `systems` is how many files the
+ * read holds under `ds/<namespace>/` for each installed design system; `unread` names each one with none, so `files`
+ * is then a lower bound.
+ */
+export type FileCount = { files: number; boards: number; systems: Record<string, number>; unread: string[] }
 
 /**
  * The files a canvas holds, from a read of it: `canvas.json` lists every board, on every page (prototype pages too),
@@ -274,8 +278,9 @@ export const countCanvasFiles = (canvas: unknown, tokens: string, paths: readonl
   const boards = isRecord(canvas) && isRecord(canvas.boards) ? Object.keys(canvas.boards) : []
   const known = new Set([...boards, 'canvas.json', tokens])
   const others = paths.filter(path => !known.has(path)).length
-  const unread = Object.keys(designSystemsOf(canvas)).filter(ns => !paths.some(path => path.startsWith(`ds/${ns}/`)))
-  return { files: Math.max(boards.length + 2 + others, paths.length), boards: boards.length, unread }
+  const systems = Object.fromEntries(Object.keys(designSystemsOf(canvas)).map(ns => [ns, paths.filter(path => path.startsWith(`ds/${ns}/`)).length]))
+  const unread = Object.keys(systems).filter(ns => systems[ns] === 0)
+  return { files: Math.max(boards.length + 2 + others, paths.length), boards: boards.length, systems, unread }
 }
 
 /**
@@ -284,17 +289,22 @@ export const countCanvasFiles = (canvas: unknown, tokens: string, paths: readonl
  *
  * A full refresh stores the file count as counted. A partial one reads only a few boards, so its folder often lacks
  * files a full read held: it takes the files that are not boards from the previous record as a floor, whatever the
- * board count does (`canvasBoards` now, plus the previous `files` less the previous `canvasBoards`), and when the
- * floor is used it keeps the previous `unread`. A record from an earlier release has no `canvasBoards`, so it gives no
- * floor: the first partial refresh after upgrading stores the count as counted.
+ * board count does: `canvasBoards` now, plus the previous `files` less the previous `canvasBoards`, plus the files read
+ * of each design system the previous count left out (one its `designSystems` did not list, or listed as `unread`).
+ * When the floor is used, `unread` is the previous one and each such design system not read now, less the ones read
+ * now, keeping only the design systems installed now. A record from an earlier release has no `canvasBoards`, so it gives no floor: the first
+ * partial refresh after upgrading stores the count as counted.
  */
 export const recordOf = (input: { canvas: string; artifact: string; version: string; full: boolean; previous?: ArtifactRecord; files: FileCount; boards: readonly string[]; designSystems: Record<string, string> }): ArtifactRecord => {
   const fullVersion = input.full ? input.version : input.previous?.fullVersion
   const { files: counted, boards: canvasBoards } = input.files
   const before = input.previous
-  const floor = !input.full && before?.files !== undefined && before.canvasBoards !== undefined ? canvasBoards + Math.max(0, before.files - before.canvasBoards) : undefined
+  const countedBefore = new Set(Object.keys(before?.designSystems ?? {}).filter(ns => !(before?.unread ?? []).includes(ns)))
+  const added = Object.keys(input.files.systems).filter(ns => !countedBefore.has(ns))
+  const floor = !input.full && before?.files !== undefined && before.canvasBoards !== undefined ? canvasBoards + Math.max(0, before.files - before.canvasBoards) + added.reduce((sum, ns) => sum + input.files.systems[ns]!, 0) : undefined
   const floored = floor !== undefined && floor > counted
-  const unread = [...(floored ? (before?.unread ?? []) : input.files.unread)].sort()
+  const installed = new Set(Object.keys(input.designSystems))
+  const unread = floored ? [...new Set([...(before?.unread ?? []).filter(ns => !added.includes(ns)), ...added.filter(ns => input.files.systems[ns] === 0)])].filter(ns => installed.has(ns)).sort() : [...input.files.unread].sort()
   return {
     canvas: input.canvas,
     artifact: input.artifact,
