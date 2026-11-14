@@ -34,6 +34,8 @@ export type Config = {
   storybook: string
   /** Where the picture and comparison commands write, absolute. */
   out: string
+  /** Where each board's differences file (`<Board>.json`) lives, absolute; the snapshot's `differences/` folder unless set. */
+  differences: string
   /** The themes `page-shots` draws each page in, set as `data-theme` on `<html>`; none draws the page as it is. */
   themes: string[]
   /** The project's hook module, absolute, when set; else found by convention in the snapshot folder (hooks.ts). */
@@ -42,7 +44,7 @@ export type Config = {
   root: string
 }
 
-const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'themes', 'hooks'])
+const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -97,6 +99,7 @@ export const parseConfig = (text: string, root: string): Config => {
     ...(tokensBoard === undefined ? {} : { tokensBoard }),
     storybook: resolve(root, field('storybook') ?? DEFAULTS.storybook),
     out: resolve(root, field('out') ?? DEFAULTS.out),
+    differences: resolve(root, field('differences') ?? join(snapshot, 'differences')),
     themes: themes as string[],
     ...(hooks === undefined ? {} : { hooks: resolve(root, hooks) }),
     root,

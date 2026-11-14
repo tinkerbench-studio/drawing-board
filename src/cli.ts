@@ -73,7 +73,9 @@ const report = (config: Config) => {
 }
 
 const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <file>]
-       drawing-board board-shot [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>]
+       drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>]
+       (board-shot is the same command under its earlier name)
+       drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>] [--out <dir>]
        drawing-board compare [--storybook <dir>]
        drawing-board page-shots [--out <dir>] [--theme <theme>] [--only page,page] [--mark <selector>]
        drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list
@@ -84,6 +86,10 @@ Settings come from the nearest ${CONFIG_FILE}, every one defaulted (see the READ
 const browserCommand = async (command: string, argv: readonly string[], config: () => Config) => {
   if (command === 'story-shot') return (await import('./pictures-run.ts')).storyShot(storyShotOptions(argv))
   if (command === 'compare-pictures') return void (await (await import('./pictures-run.ts')).comparePictures(compareOptions(argv)))
+  if (command === 'layout') {
+    const run = await import('./layout-run.ts')
+    return void console.log((await run.layout(config(), run.layoutOptions(argv))).report)
+  }
   const run = await import('./board-shot-run.ts')
   if (command === 'compare') return void console.log(await run.compareStories(config(), flag(argv, 'storybook')))
   if (command === 'page-shots') return void (await run.pageShots(config(), run.pageShotsOptions(argv)))
@@ -92,7 +98,7 @@ const browserCommand = async (command: string, argv: readonly string[], config: 
   if (failed.length > 0) throw new Error(`Not made:\n${failed.map(f => `- ${f}`).join('\n')}`)
 }
 
-const BROWSER_COMMANDS = new Set(['story-shot', 'compare-pictures', 'board-shot', 'compare', 'page-shots'])
+const BROWSER_COMMANDS = new Set(['story-shot', 'compare-pictures', 'annotate', 'board-shot', 'layout', 'compare', 'page-shots'])
 
 const main = async (argv: readonly string[]) => {
   const [command = '', ...rest] = argv

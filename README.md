@@ -69,7 +69,8 @@ playwright-core`) and a Chromium, from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` whe
 
 | Command | What it does |
 | --- | --- |
-| `drawing-board board-shot [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light\|dark]` | The picture a UX change carries: the board's committed copy beside its story from the built Storybook, at one width, each under a banner naming where it came from (DESIGN CANVAS: the board, canvas link and copy version; STORYBOOK: the story, its id, the commit), every difference boxed on both sides with the same number in its own colour, and a table. Writes `<out>/shots/<Board>-side-by-side.png` and `.md`. With no `--board`, every board a story shows. The differences come from `<snapshot>/differences/<Board>.json` when there is one, else from the comparison below (only what is visible; the table says so) |
+| `drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light\|dark]` | The picture a UX change carries: the board's committed copy beside its story from the built Storybook, at one width, each under a banner naming where it came from (DESIGN CANVAS: the board, canvas link and copy version; STORYBOOK: the story, its id, the commit), every difference boxed on both sides with the same number in its own colour, and a table. Writes `<out>/shots/<Board>-side-by-side.png` and `.md`. With no `--board`, every board a story shows. `board-shot` is its earlier name and still works. The story is the one in the built Storybook unless the project's `storyPage()` hook (below) draws it. The differences come from `<differences>/<Board>.json` (the `differences` setting; `<snapshot>/differences/` unless set) when there is one, else from the comparison below (only what is visible; the table says so) |
+| `drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>]` | Where the named landmarks sit on each board and on its story, measured from the top left of the screen at one width and in one font. A landmark is an element marked `data-landmark="name"` on the board and on the component the story draws (`--attr` names another attribute; `--origin` a selector to measure from, when the screen sits at an offset). Two boxes within `--tolerance` pixels (2 by default) are the same; each is reported as same, moved, resized, or on one side only. Writes `<out>/layout/layout.md`, and for every screen outside tolerance or with nothing marked a picture of each side (`<Board>-board.png`, `<Board>-story.png`). Advisory: it never sets an exit code. A board whose story cannot be drawn is listed as not measured |
 | `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). Writes `<out>/compare.md` |
 | `drawing-board page-shots [--only page,page] [--theme <theme>] [--mark <selector>] [--out <dir>]` | The pages the project's `pages()` hook returns, each in every theme (set as `data-theme` on `<html>`) and a 390 px phone in the first; with no themes, as it is and its phone. Writes `<out>/pages/<page>-<variant>.png` |
 | `drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light\|dark]` | One story from a built Storybook, on its own page. With neither flag it writes `<out>-dark.png`, `<out>-light.png` and `<out>-phone.png` (dark, 390 px); the theme is passed as Storybook's `theme` global. `--list` prints the story ids |
@@ -103,7 +104,8 @@ none, every setting is its convention. An unknown setting is refused, so a typo 
 | `snapshot` | `design/canvas` | The snapshot folder |
 | `stories` | `["**/*.stories.{ts,tsx,js,jsx,mdx}"]` | Globs of the story files (never node_modules or the built Storybook); a story's title is its `title: '…'` |
 | `storybook` | `storybook-static` | The built Storybook the browser commands read |
-| `out` | `reports/design-canvas` | Where they write: `shots/`, `pages/`, `compare.md` |
+| `out` | `reports/design-canvas` | Where they write: `shots/`, `layout/`, `pages/`, `compare.md` |
+| `differences` | `<snapshot>/differences` | The folder holding each board's differences list, `<Board>.json`, which `annotate` reads |
 | `tokens` | `tokens.json` | The tokens file under `project/` in the folder a refresh reads |
 | `prototypePages` | A ticket key (`NOK-12`, `proto-tck-153`) | A case-blind regular expression matched against each page's id and name; boards on a matching page are left out |
 | `tokensBoard` | None | A board that shows every token by `--name` and value, checked against the tokens |
@@ -113,18 +115,30 @@ none, every setting is its convention. An unknown setting is refused, so a typo 
 ### Hooks: what only the project can supply
 
 A project's own pieces go in one module, found by convention at `<snapshot>/drawing-board.ts` (or
-`.tsx`, `.mts`, `.mjs`, `.js`). Both exports are optional, and each gets `{ config, canvas }`: the
+`.tsx`, `.mts`, `.mjs`, `.js`). Every export is optional, and each gets `{ config, canvas }`: the
 settings (`config.root` is the project folder) and the snapshot on disk.
 
 ```ts
-import { componentProblems, componentsOf, type HookContext } from '@tinkerbench-studio/drawing-board'
+import { componentProblems, componentsOf, type HookContext, type StoryRequest } from '@tinkerbench-studio/drawing-board'
 
 /** More problems for drawing-board check. */
 export const checks = ({ canvas }: HookContext) => componentProblems(componentsOf(canvas.metas())['Components.dc.html'] ?? {}, builtComponents())
 
 /** The pages drawing-board page-shots shoots: HTML by name, or { html, width, css }. */
 export const pages = () => ({ home: renderHome(sample) })
+
+/**
+ * How a story is served, for `annotate` and `layout`: the page to draw beside the board, `{ html, assets?, ready? }`
+ * (`assets` is a folder served at the page's root, for what the HTML links; `ready` a selector to wait for). It gets
+ * `{ config, canvas, board, story, page? }`: the board's file and its map entry's story title and full-page export.
+ * Return undefined to fall back to the built Storybook. A project with no built Storybook of its own, or one that
+ * draws stories from saved markup, supplies this instead of `storybook`.
+ */
+export const storyPage = ({ story }: HookContext & StoryRequest) => savedMarkup(story) && { html: pageAround(savedMarkup(story)), assets: 'assets' }
 ```
+
+Where the differences list lives is the `differences` setting; how a story is served is the `storyPage()` hook, both
+used by `annotate`, and the hook by `layout` as well.
 
 The module is bundled with esbuild (an optional peer dependency, needed only when there are hooks)
 into the project's `node_modules/.cache`, so it imports the project's own packages, TypeScript and JSX
@@ -154,12 +168,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.3.1 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.4.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.3.1`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.4.0`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `.drawing-board` only for what differs from the conventions above. Nookivia's, for example:

@@ -19,9 +19,20 @@ export type HookContext = { config: Config; canvas: ReturnType<typeof project> }
 /** A page to shoot: its whole HTML document, or that with the width to draw it at and CSS to add before the shot. */
 export type PageShot = string | { html: string; width?: number; css?: string }
 
+/**
+ * A story the project draws itself: a whole HTML document (relative URLs in it resolve against `assets`, a folder served
+ * at the page's root, when set). `annotate` and `layout` use it in place of a story from the built Storybook.
+ */
+export type StoryPage = { html: string; assets?: string; /** A selector to wait for before shooting. */ ready?: string }
+
+/** Which story is wanted: the board, the story title its map entry names, and that entry's full-page export, if any. */
+export type StoryRequest = { board: string; story: string; page?: string }
+
 export type Hooks = {
   /** More problems for `drawing-board check`, as lines; empty when the project's own rules hold. */
   checks?: (context: HookContext) => readonly string[] | Promise<readonly string[]>
+  /** How a story is served: the page to draw beside a board. Return undefined to use the built Storybook. */
+  storyPage?: (context: HookContext & StoryRequest) => StoryPage | undefined | Promise<StoryPage | undefined>
   /** The pages `drawing-board page-shots` shoots, by name. */
   pages?: (context: HookContext) => Record<string, PageShot> | Promise<Record<string, PageShot>>
 }

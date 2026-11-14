@@ -18,10 +18,12 @@ export const launch = async () => {
   return playwright.chromium.launch(executablePath === undefined ? {} : { executablePath })
 }
 
-/** Serves a folder on a free local port, refusing any path outside it. */
-export const serve = (root: string): Promise<{ server: Server; base: string }> => {
+/** Serves a folder on a free local port, refusing any path outside it; `pages` are HTML documents served from memory by path (`/story.html`), ahead of the folder. */
+export const serve = (root: string, pages: Readonly<Record<string, string>> = {}): Promise<{ server: Server; base: string }> => {
   const server = createServer((req, res) => {
-    const path = resolve(join(root, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)))
+    const url = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)
+    if (url in pages) return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(pages[url])
+    const path = resolve(join(root, url))
     if (path !== root && !path.startsWith(root + sep)) return void res.writeHead(403).end()
     if (!existsSync(path) || !statSync(path).isFile()) return void res.writeHead(404).end()
     res.writeHead(200, { 'content-type': CONTENT_TYPES[extname(path)] ?? 'application/octet-stream' }).end(readFileSync(path))
