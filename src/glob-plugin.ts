@@ -4,13 +4,27 @@ import { globSync, readFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import type { Plugin } from 'esbuild'
 
-/** Vite's eager `import.meta.glob('<pattern>', { eager: true, … })` of JSON files, as the object Vite would give: path → parsed JSON. */
+/**
+ * Vite's eager `import.meta.glob('<pattern>.json', { eager: true, … })`, as the object Vite would give: path → module. Like
+ * Vite, `import: 'default'` (or another name) gives that export of each file, and no `import` gives `{ default: <json> }`.
+ * A glob that is lazy, or of anything but JSON, is left as it is.
+ */
 export const expandGlobs = (source: string, dir: string): string =>
-  source.replace(/import\.meta\.glob(?:<(?:[^<>()]|<(?:[^<>()]|<[^<>]*>)*>)*>)?\(\s*(['"])([^'"]+)\1\s*(?:,\s*\{[^}]*\})?\s*,?\s*\)/g, (whole, _quote: string, pattern: string) => {
-    if (!pattern.endsWith('.json')) return whole
-    const files = globSync(pattern, { cwd: dir }).sort()
-    return `(${JSON.stringify(Object.fromEntries(files.map(f => [`./${relative(dir, join(dir, f)).replaceAll('\\', '/')}`, JSON.parse(readFileSync(join(dir, f), 'utf8'))])))})`
-  })
+  source.replace(
+    /import\.meta\.glob(?:<(?:[^<>()]|<(?:[^<>()]|<[^<>]*>)*>)*>)?\(\s*(['"])([^'"]+)\1\s*,\s*(\{(?:[^{}]|\{[^{}]*\})*\})\s*,?\s*\)/g,
+    (whole, _quote: string, pattern: string, options: string) => {
+      if (!pattern.endsWith('.json') || !/\beager\s*:\s*true\b/.test(options)) return whole
+      const named = /\bimport\s*:\s*(['"])([^'"]+)\1/.exec(options)?.[2]
+      const files = globSync(pattern, { cwd: dir }).sort()
+      const entries = files.map(f => {
+        const key = relative(dir, join(dir, f)).replaceAll('\\', '/')
+        const json: unknown = JSON.parse(readFileSync(join(dir, f), 'utf8'))
+        const value = named === undefined ? { default: json } : named === 'default' ? json : (json as Record<string, unknown>)[named]
+        return [key.startsWith('.') ? key : `./${key}`, value]
+      })
+      return `(${JSON.stringify(Object.fromEntries(entries))})`
+    },
+  )
 
 const LOADERS = { js: 'js', jsx: 'jsx', ts: 'ts', tsx: 'tsx' } as const
 

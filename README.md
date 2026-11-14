@@ -210,8 +210,8 @@ import { viteJsonGlob } from '@tinkerbench-studio/drawing-board/samples/esbuild'
 await esbuild.build({ entryPoints: ['pages.ts'], bundle: true, plugins: [viteJsonGlob()] })
 ```
 
-It rewrites eager `import.meta.glob` calls of `.json` files, in any `.js`, `.jsx`, `.ts` or `.tsx` file it
-loads, and leaves every other glob alone. The patterns are read from disk relative to the file that calls the
+It rewrites eager `import.meta.glob` calls of `.json` files (`import: 'default'` gives each file's JSON, as in Vite; with no `import`, each value is `{ default: <json> }`), in any `.js`, `.jsx`, `.ts` or `.tsx` file it
+loads, and leaves every other glob alone (a lazy one included). The patterns are read from disk relative to the file that calls the
 glob, so a snapshot kept elsewhere than that glob names is not found by a different setting. A type argument may nest
 generics up to two levels (`Record<string, Record<string, string>>`). It uses `fs.globSync`, so it needs Node 22 or
 newer. Hooks are bundled with it already.
