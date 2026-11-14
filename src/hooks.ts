@@ -4,11 +4,12 @@
 // module is bundled with esbuild (an optional peer dependency) into the project's node_modules/.cache, so its
 // imports resolve against the project's own packages, with JSX and Vite's eager `import.meta.glob` of JSON files.
 import { createHash } from 'node:crypto'
-import { existsSync, globSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import type { Config } from './config.ts'
+import { expandGlobs, viteJsonGlob } from './glob-plugin.ts'
 import { project } from './project.ts'
 import { SnapshotError } from './sample.ts'
 
@@ -36,13 +37,7 @@ export const hookModule = (config: Config): string | undefined => {
   return HOOK_NAMES.map(name => join(config.snapshot, name)).find(existsSync)
 }
 
-/** Vite's eager `import.meta.glob('<pattern>', { eager: true, … })` of JSON files, as the object Vite would give: path → parsed JSON. */
-export const expandGlobs = (source: string, dir: string): string =>
-  source.replace(/import\.meta\.glob(?:<[^>()]*>)?\(\s*(['"])([^'"]+)\1\s*(?:,\s*\{[^}]*\})?\s*\)/g, (whole, _quote: string, pattern: string) => {
-    if (!pattern.endsWith('.json')) return whole
-    const files = globSync(pattern, { cwd: dir }).sort()
-    return `(${JSON.stringify(Object.fromEntries(files.map(f => [`./${relative(dir, join(dir, f)).replaceAll('\\', '/')}`, JSON.parse(readFileSync(join(dir, f), 'utf8'))])))})`
-  })
+export { expandGlobs }
 
 /** The project's hooks, bundled and loaded; none when it has no hook module. */
 export const loadHooks = async (config: Config): Promise<Hooks> => {
@@ -68,16 +63,7 @@ export const loadHooks = async (config: Config): Promise<Hooks> => {
     jsx: 'automatic',
     logLevel: 'error',
     plugins: [
-      {
-        name: 'vite-json-glob',
-        setup: build =>
-          build.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, args => {
-            const source = readFileSync(args.path, 'utf8')
-            if (!source.includes('import.meta.glob')) return undefined
-            const ext = args.path.match(/\.([cm]?[jt]sx?)$/)![1]!.replace(/^[cm]/, '') as 'js' | 'jsx' | 'ts' | 'tsx'
-            return { contents: expandGlobs(source, dirname(args.path)), loader: ext }
-          }),
-      },
+      viteJsonGlob(),
     ],
   })
   try {

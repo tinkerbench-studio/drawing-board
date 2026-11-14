@@ -178,6 +178,40 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
 The functions behind the commands are exported too (`'@tinkerbench-studio/drawing-board'`; the
 browser half from `'@tinkerbench-studio/drawing-board/pictures'`).
 
+### Reading the samples in stories: `/samples` and `/samples/esbuild`
+
+A story shows the values a board marks with `data-sample`, which a refresh copies into each
+`boards/<Board>.meta.json`. `createCanvasSamples` reads them; it imports nothing from Node, so Vite and
+Storybook bundle it. The project passes in the files, because Vite resolves `import.meta.glob` relative to the
+file that calls it:
+
+```ts
+import type { BoardMeta } from '@tinkerbench-studio/drawing-board'
+import { createCanvasSamples } from '@tinkerbench-studio/drawing-board/samples'
+
+export const { canvasSample, canvasHas, canvasKeys } = createCanvasSamples(
+  import.meta.glob<BoardMeta>('./boards/*.meta.json', { eager: true, import: 'default' }),
+)
+```
+
+- `canvasSample(board, key)` is the text the board shows, and throws, naming the board and key, when the snapshot lacks it.
+- `canvasHas(board, key)` says whether the board marks `key`; `canvasKeys(board)` lists its keys in board order.
+- A board whose copy no refresh has read is ignored.
+
+Code that bundles such a module with esbuild (a script that renders pages, say) has no `import.meta.glob`.
+`viteJsonGlob()` from `'@tinkerbench-studio/drawing-board/samples/esbuild'` is the esbuild plugin that gives it
+the same files, read at bundle time (esbuild is the optional peer dependency; the plugin is Node only, which is
+why it is its own entry):
+
+```ts
+import { viteJsonGlob } from '@tinkerbench-studio/drawing-board/samples/esbuild'
+
+await esbuild.build({ entryPoints: ['pages.ts'], bundle: true, plugins: [viteJsonGlob()] })
+```
+
+It rewrites eager `import.meta.glob` calls of `.json` files, in any `.js`, `.jsx`, `.ts` or `.tsx` file it
+loads, and leaves every other glob alone. Hooks are bundled with it already.
+
 ### Releasing
 
 Bump `version` in `package.json`, merge, then push the tag `v<version>`. CI tests it and publishes it
