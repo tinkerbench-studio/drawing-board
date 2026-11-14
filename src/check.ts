@@ -159,8 +159,14 @@ export const filesInUse = (input: { used: number; limits: Limits; version?: stri
 /** Why a count from the meta files is a lower bound: there is no record yet, or the record has no count. */
 export const metaCountBound = (hasRecord: boolean): string => `${hasRecord ? `${ARTIFACT_RECORD} records no file count` : `there is no ${ARTIFACT_RECORD} yet`}, so this is the meta files plus 2, and a refresh records the count`
 
-/** Why a count from a read is a lower bound: the read holds no files of these installed design systems. */
-export const unreadBound = (namespaces: readonly string[]): string => `the folder holds no files of the design system${namespaces.length === 1 ? '' : 's'} ${namespaces.join(', ')} under project/ds/, so they were not read and not counted`
+/** Why a count from a read is a lower bound: no files of these installed design systems were read. */
+export const unreadBound = (namespaces: readonly string[]): string => `no files of the design system${namespaces.length === 1 ? '' : 's'} ${namespaces.join(', ')} under project/ds/ were read, so they are not counted`
+
+/**
+ * What a count from a read assumes: canvas.json names the design systems but not their files, so a read holding any
+ * of a namespace's files is taken to hold all of them. Said wherever a count is made from a read.
+ */
+export const DS_ASSUMPTION = 'The count assumes every file under project/ds/<namespace>/ was read when any of it was; a partial refresh keeps the last full count of those files as a floor.'
 
 /** The snapshot's record must be of the canvas the config names: its id and its link, where both are known. */
 export const recordProblems = (record: ArtifactRecord, canvas: { id: string; artifact: string | null }): string[] => {

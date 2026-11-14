@@ -2,7 +2,7 @@
 // refresh, so the person refreshing sees what changed. It never writes; cli.ts reads the files. Pure.
 import { join } from 'node:path'
 
-import { filesInUse, unreadBound } from './check.ts'
+import { DS_ASSUMPTION, filesInUse, unreadBound } from './check.ts'
 import type { Limits } from './config.ts'
 import { SnapshotError } from './sample.ts'
 import { boardsOf, copyHash, countCanvasFiles, designSystemsOf, unrecordedBoards, type ArtifactRecord, type BoardMeta } from './snapshot.ts'
@@ -23,6 +23,8 @@ export type CanvasStatus = {
   files: { line: string; warning: boolean }
   /** Design systems installed on the canvas against the record and against the project's `designSystems`. */
   designSystems: string[]
+  /** What the count assumes, when the canvas has design systems installed. */
+  assumption?: string
   /** The report, a line each, without the files line. */
   lines: string[]
 }
@@ -68,5 +70,5 @@ export const canvasStatus = (input: { from: string; read: (path: string) => stri
   ]
   const count = countCanvasFiles(canvas, input.tokens, input.paths)
   const files = filesInUse({ used: count.files, limits: input.limits, ...(count.unread.length === 0 ? {} : { bound: unreadBound(count.unread) }) })
-  return { added, removed, moved, changed, unread, files, designSystems, lines: lines.length > 0 ? lines : ['The snapshot is in step with the canvas read.'] }
+  return { added, removed, moved, changed, unread, files, designSystems, ...(Object.keys(installed).length === 0 ? {} : { assumption: DS_ASSUMPTION }), lines: lines.length > 0 ? lines : ['The snapshot is in step with the canvas read.'] }
 }

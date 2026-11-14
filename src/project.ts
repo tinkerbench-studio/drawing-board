@@ -2,7 +2,7 @@
 import { existsSync, globSync, readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
 
-import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
+import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, unreadBound, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import { snapshotConfigs, type Config } from './config.ts'
 import { outlineProblems, passedSampleProblems, sampleKeyProblems, themeValueProblems, tokenCssProblems } from './extra-checks.ts'
 import { componentMarkup } from './html.ts'
@@ -102,15 +102,16 @@ export const checkProblems = (config: Config): string[] => {
 
 
 /**
- * The canvas's files against its limit, as `check` says it: the count the last refresh recorded in artifact.json,
- * else a lower bound from the meta files (plus canvas.json and the tokens).
+ * The canvas's files against its limit, as `check` says it: the count the last refresh recorded in artifact.json (a
+ * lower bound when the record names design systems whose files were not read), else a lower bound from the meta
+ * files (plus canvas.json and the tokens).
  */
 export const canvasFiles = (config: Config): { line: string; warning: boolean } => {
   const p = project(config)
   const record = p.record()
   const { limits } = config
   const version = record.version === undefined ? {} : { version: record.version }
-  return filesInUse(record.files === undefined ? { used: p.metas().length + 2, limits, ...version, bound: metaCountBound(existsSync(p.file(ARTIFACT_RECORD))) } : { used: record.files, limits, ...version })
+  return filesInUse(record.files === undefined ? { used: p.metas().length + 2, limits, ...version, bound: metaCountBound(existsSync(p.file(ARTIFACT_RECORD))) } : { used: record.files, limits, ...version, ...(record.unread === undefined ? {} : { bound: unreadBound(record.unread) }) })
 }
 
 /**

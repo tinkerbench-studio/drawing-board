@@ -139,7 +139,7 @@ describe('filesInUse', () => {
     expect(filesInUse({ used: 500, limits, bound: metaCountBound(true) }).warning).toBe(true)
   })
   it("says a count from a read without a design system's files is a lower bound", () => {
-    expect(filesInUse({ used: 40, limits, bound: unreadBound(['acme']) }).line).toBe('Canvas files: at least 40 of 512 in use, at most 472 free: the folder holds no files of the design system acme under project/ds/, so they were not read and not counted.')
+    expect(filesInUse({ used: 40, limits, bound: unreadBound(['acme']) }).line).toBe('Canvas files: at least 40 of 512 in use, at most 472 free: no files of the design system acme under project/ds/ were read, so they are not counted.')
     expect(unreadBound(['a', 'b'])).toMatch(/design systems a, b/)
   })
 })

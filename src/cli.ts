@@ -10,8 +10,8 @@ import { compareOptions, storyShotOptions } from './pictures.ts'
 import { loadHooks } from './hooks.ts'
 import { boardNameProblems, canvasFiles, checkProblems, checkWarnings, project, readFiles, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
-import { unreadBound } from './check.ts'
-import { ARTIFACT_RECORD, boardsOf, buildSnapshot, countCanvasFiles, designSystemsOf, metaPath, notCopiedNotes, recordText, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
+import { DS_ASSUMPTION, unreadBound } from './check.ts'
+import { ARTIFACT_RECORD, boardsOf, buildSnapshot, countCanvasFiles, designSystemsOf, metaPath, notCopiedNotes, recordOf, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
 import { canvasStatus } from './status.ts'
 
 const flag = (argv: readonly string[], name: string) => {
@@ -38,7 +38,7 @@ const snapshot = (config: Config, argv: readonly string[]) => {
   const snap = buildSnapshot({ canvas, tokensText, version, map, read, previous: f => before.get(f), only, tokens, existing: [...before.values()], prototype: config.prototypePages })
   const onCanvas = boardsOf(canvas, config.prototypePages).map(b => b.file)
   const count = countCanvasFiles(canvas, config.tokens, readFiles(from))
-  const record = recordText({ canvas: config.canvas.id, artifact: config.artifact, version, full: only === undefined, previous: p.record(), files: count, boards: onCanvas, designSystems: designSystemsOf(canvas) })
+  const record = recordOf({ canvas: config.canvas.id, artifact: config.artifact, version, full: only === undefined, previous: p.record(), files: count, boards: onCanvas, designSystems: designSystemsOf(canvas) })
   const runtime = join(from, 'artifact-type/dc-runtime.js')
   if (only === undefined && !existsSync(runtime)) throw new SnapshotError(`${runtime} was not read: boards render offline only with the canvas runtime.`)
   // The snapshot is only touched once everything above has been read, so a refusal there leaves the old one.
@@ -48,7 +48,7 @@ const snapshot = (config: Config, argv: readonly string[]) => {
   const boards = existsSync(p.file('boards')) ? readdirSync(p.file('boards')) : []
   for (const name of only === undefined ? refreshedNames(boards) : stale) rmSync(p.file(`boards/${name}`), { recursive: true, force: true })
   mkdirSync(p.file('boards'), { recursive: true })
-  for (const [path, text] of Object.entries({ ...snap.files, [ARTIFACT_RECORD]: record, [STORY_INDEX]: JSON.stringify(storyIndexOf(map), null, 2) + '\n' })) {
+  for (const [path, text] of Object.entries({ ...snap.files, [ARTIFACT_RECORD]: JSON.stringify(record, null, 2) + '\n', [STORY_INDEX]: JSON.stringify(storyIndexOf(map), null, 2) + '\n' })) {
     mkdirSync(dirname(p.file(path)), { recursive: true })
     writeFileSync(p.file(path), text)
   }
@@ -59,7 +59,8 @@ const snapshot = (config: Config, argv: readonly string[]) => {
     const missing = unrecordedBoards(onCanvas, snap.metas.map(m => m.file), only)
     if (missing.length > 0) console.log(`On the canvas but not in the snapshot, and not named: ${missing.join(', ')}. A full refresh adds them.`)
   } else console.log(`Snapshot of ${config.artifact} version ${version}: ${snap.boards.boards.length} boards, ${screensOf(map).length} copied, ${moved} of them changed (and now at ${version}).`)
-  if (count.unread.length > 0) console.log(`The canvas holds at least ${count.files} files: ${unreadBound(count.unread)}. Read them too for the full count.`)
+  if (record.unread !== undefined) console.log(`The canvas holds at least ${record.files} files: ${unreadBound(record.unread)}. Read them too for the full count.`)
+  if (Object.keys(designSystemsOf(canvas)).length > 0) console.log(DS_ASSUMPTION)
 }
 
 /** The configs a command reads: the canvas named with --canvas, else every canvas that has a snapshot. */
@@ -96,6 +97,7 @@ const status = (config: Config, argv: readonly string[]) => {
   console.log([`The canvas "${config.canvas.id}" read in ${from}, against its snapshot:`, ...found.lines.map(line => `- ${line}`)].join('\n'))
   if (found.files.warning) console.warn(`warning: ${found.files.line}`)
   else console.log(found.files.line)
+  if (found.assumption !== undefined) console.log(found.assumption)
 }
 
 /** The flags of `find` that take a value. */

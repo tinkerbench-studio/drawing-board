@@ -175,13 +175,24 @@ describe('the record, artifact.json', () => {
     expect(Object.keys(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })))).toEqual(['canvas', 'artifact', 'version', 'files', 'canvasBoards', 'boards', 'designSystems'])
   })
 
-  it('never lets a partial refresh lower the count while the canvas has as many boards, and stores a full count as counted', () => {
-    const previous = { fullVersion: 'v1', files: 60, canvasBoards: 30 }
-    expect(JSON.parse(recordText({ ...base, full: false, previous })).files).toBe(60)
-    expect(JSON.parse(recordText({ ...base, full: false, previous, files: { files: 70, boards: 30, unread: [] } })).files).toBe(70)
-    expect(JSON.parse(recordText({ ...base, full: false, previous, files: { files: 38, boards: 28, unread: [] } })).files).toBe(38)
+  it('floors a partial count on the files that are not boards, whatever the board count does, and a full one is as counted', () => {
+    const previous = { fullVersion: 'v1', files: 60, canvasBoards: 30, unread: ['acme'] }
+    // 30 files that are not boards before; now 31 boards, and a small read counted 35.
+    const partial = (files: { files: number; boards: number; unread: string[] }) => JSON.parse(recordText({ ...base, full: false, previous, files }))
+    expect(partial({ files: 35, boards: 31, unread: [] })).toMatchObject({ files: 61, canvasBoards: 31, unread: ['acme'] })
+    expect(partial({ files: 70, boards: 31, unread: ['zeta'] })).toMatchObject({ files: 70, unread: ['zeta'] })
+    expect(partial({ files: 30, boards: 28, unread: [] }).files).toBe(58)
+    expect(partial({ files: 75, boards: 31, unread: [] }).unread).toBeUndefined()
     expect(JSON.parse(recordText({ ...base, full: true, previous })).files).toBe(40)
+  })
+
+  it('has no floor from a record with no canvasBoards, and records the unread design systems sorted, after canvasBoards', () => {
     expect(JSON.parse(recordText({ ...base, full: false, previous: { files: 60 } })).files).toBe(40)
+    expect(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })).files).toBe(40)
+    const text = recordText({ ...base, full: true, files: { files: 40, boards: 30, unread: ['zeta', 'acme'] } })
+    expect(Object.keys(JSON.parse(text))).toEqual(['canvas', 'artifact', 'version', 'fullVersion', 'files', 'canvasBoards', 'unread', 'boards', 'designSystems'])
+    expect(JSON.parse(text).unread).toEqual(['acme', 'zeta'])
+    expect(parseRecord(text).unread).toEqual(['acme', 'zeta'])
   })
 
   it('counts every board canvas.json lists, on any page, canvas.json, the tokens and the other files read', () => {

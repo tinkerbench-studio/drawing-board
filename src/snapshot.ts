@@ -226,11 +226,12 @@ export const snapshotOptions = (argv: readonly string[]): { from: string; versio
 export const ARTIFACT_RECORD = 'artifact.json'
 /**
  * What `artifact.json` holds: the canvas's id in the config, its link, the version read, the version of the last full
- * refresh, the files the canvas holds ({@link countCanvasFiles}) and how many of them are boards (on every page), its
+ * refresh, the files the canvas holds ({@link countCanvasFiles}) and how many of them are boards (on every page), the
+ * installed design systems whose files were not read (`files` is then a lower bound; left out when there are none), its
  * boards outside prototype pages and the design systems installed on it. A record written by an earlier release holds
  * only `artifact`, so every field may be missing.
  */
-export type ArtifactRecord = { canvas?: string; artifact?: string; version?: string; fullVersion?: string; files?: number; canvasBoards?: number; boards?: string[]; designSystems?: Record<string, string> }
+export type ArtifactRecord = { canvas?: string; artifact?: string; version?: string; fullVersion?: string; files?: number; canvasBoards?: number; unread?: string[]; boards?: string[]; designSystems?: Record<string, string> }
 
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(v => typeof v === 'string')
 const sortedRecord = <T>(entries: [string, T][]): Record<string, T> => Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
@@ -247,6 +248,7 @@ export const parseRecord = (text: string): ArtifactRecord => {
   const record: ArtifactRecord = {}
   for (const key of ['canvas', 'artifact', 'version', 'fullVersion'] as const) if (typeof raw[key] === 'string') record[key] = raw[key]
   for (const key of ['files', 'canvasBoards'] as const) if (typeof raw[key] === 'number' && Number.isInteger(raw[key]) && raw[key] >= 0) record[key] = raw[key]
+  if (isStringList(raw.unread) && raw.unread.length > 0) record.unread = raw.unread
   if (isStringList(raw.boards)) record.boards = raw.boards
   if (isRecord(raw.designSystems)) record.designSystems = sortedRecord(Object.entries(raw.designSystems).filter((e): e is [string, string] => typeof e[1] === 'string'))
   return record
@@ -277,27 +279,37 @@ export const countCanvasFiles = (canvas: unknown, tokens: string, paths: readonl
 }
 
 /**
- * The text of `artifact.json` after a refresh, its keys in a fixed order. A full refresh sets `fullVersion` to the
- * version read; a partial one keeps the previous record's, or leaves it out when there was none. The file count is
- * stored as counted, except that a partial refresh never lowers it while the canvas has as many boards as before: a
- * read for a few boards often leaves out files a full read held.
+ * The record a refresh writes, its keys in a fixed order. A full refresh sets `fullVersion` to the version read; a
+ * partial one keeps the previous record's, or leaves it out when there was none.
+ *
+ * A full refresh stores the file count as counted. A partial one reads only a few boards, so its folder often lacks
+ * files a full read held: it takes the files that are not boards from the previous record as a floor, whatever the
+ * board count does (`canvasBoards` now, plus the previous `files` less the previous `canvasBoards`), and when the
+ * floor is used it keeps the previous `unread`. A record from an earlier release has no `canvasBoards`, so it gives no
+ * floor: the first partial refresh after upgrading stores the count as counted.
  */
-export const recordText = (input: { canvas: string; artifact: string; version: string; full: boolean; previous?: ArtifactRecord; files: FileCount; boards: readonly string[]; designSystems: Record<string, string> }): string => {
+export const recordOf = (input: { canvas: string; artifact: string; version: string; full: boolean; previous?: ArtifactRecord; files: FileCount; boards: readonly string[]; designSystems: Record<string, string> }): ArtifactRecord => {
   const fullVersion = input.full ? input.version : input.previous?.fullVersion
-  const previous = input.previous?.files
-  const kept = !input.full && previous !== undefined && input.previous?.canvasBoards === input.files.boards && previous > input.files.files
-  const record: ArtifactRecord = {
+  const { files: counted, boards: canvasBoards } = input.files
+  const before = input.previous
+  const floor = !input.full && before?.files !== undefined && before.canvasBoards !== undefined ? canvasBoards + Math.max(0, before.files - before.canvasBoards) : undefined
+  const floored = floor !== undefined && floor > counted
+  const unread = [...(floored ? (before?.unread ?? []) : input.files.unread)].sort()
+  return {
     canvas: input.canvas,
     artifact: input.artifact,
     version: input.version,
     ...(fullVersion === undefined ? {} : { fullVersion }),
-    files: kept ? previous : input.files.files,
-    canvasBoards: input.files.boards,
+    files: floored ? floor : counted,
+    canvasBoards,
+    ...(unread.length === 0 ? {} : { unread }),
     boards: [...input.boards].sort(),
     designSystems: sortedRecord(Object.entries(input.designSystems)),
   }
-  return JSON.stringify(record, null, 2) + '\n'
 }
+
+/** The text of `artifact.json`: {@link recordOf} as 2-space JSON and a newline. */
+export const recordText = (input: Parameters<typeof recordOf>[0]): string => JSON.stringify(recordOf(input), null, 2) + '\n'
 
 /** The boards on the canvas the snapshot has no meta file for, sorted, leaving out the ones in `named`. */
 export const unrecordedBoards = (onCanvas: readonly string[], recorded: readonly string[], named: readonly string[] = []): string[] => {

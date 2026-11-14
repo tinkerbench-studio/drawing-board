@@ -43,7 +43,9 @@ describe('canvasStatus', () => {
 
   it("says the count is a lower bound when the read holds none of an installed design system's files", () => {
     const found = status({ 'canvas.json': canvas({ 'A.dc.html': 'main' }, [{ namespace: 'acme', version: '3' }]) }, [meta('A.dc.html', 'main')], { record: { designSystems: { acme: '3' } } })
-    expect(found.files.line).toBe('Canvas files: at least 3 of 512 in use, at most 509 free: the folder holds no files of the design system acme under project/ds/, so they were not read and not counted.')
+    expect(found.files.line).toBe('Canvas files: at least 3 of 512 in use, at most 509 free: no files of the design system acme under project/ds/ were read, so they are not counted.')
+    expect(found.assumption).toMatch(/assumes every file under project\/ds\/<namespace>\/ was read when any of it was/)
+    expect(status({ 'canvas.json': canvas({ 'A.dc.html': 'main' }) }, [meta('A.dc.html', 'main')]).assumption).toBeUndefined()
   })
 
   it('compares the design systems installed with the record and with the setting', () => {

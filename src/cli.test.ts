@@ -197,22 +197,47 @@ describe('the record, artifact.json', () => {
 })
 
 describe('the file count', () => {
-  it("says when a design system's files were not read, and a partial refresh from a small read keeps the count", () => {
+  const record = (dir: string) => JSON.parse(readFileSync(join(dir, 'canvas/artifact.json'), 'utf8'))
+
+  it('records the design systems whose files were not read, and check then says at least', () => {
     const { dir, from } = fixture()
     write(from, 'project/canvas.json', JSON.stringify({ ...JSON.parse(canvas(1)), designSystems: [{ namespace: 'acme', version: '3' }] }))
-    const unread = run(dir, ['snapshot', '--from', from, '--version', 'v1'])
-    expect(unread.stdout).toContain('The canvas holds at least 6 files: the folder holds no files of the design system acme under project/ds/')
-    write(from, 'project/ds/acme/a.js', '//')
-    write(from, 'project/ds/acme/b.js', '//')
-    run(dir, ['snapshot', '--from', from, '--version', 'v2'])
-    const record = () => JSON.parse(readFileSync(join(dir, 'canvas/artifact.json'), 'utf8'))
-    expect(record()).toMatchObject({ files: 8, canvasBoards: 4 })
+    const snap = run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    expect(snap.stdout).toContain('The canvas holds at least 6 files: no files of the design system acme under project/ds/ were read')
+    expect(snap.stdout).toContain('The count assumes every file under project/ds/<namespace>/ was read when any of it was')
+    expect(record(dir)).toMatchObject({ files: 6, canvasBoards: 4, unread: ['acme'] })
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(0)
+    expect(check.stdout).toContain('Canvas files: at least 6 of 512 in use, at most 506 free (canvas version v1): no files of the design system acme under project/ds/ were read')
+  })
+
+  it('floors a partial refresh that adds a board, from a read with fewer files, on the last full count', () => {
+    const { dir, from } = fixture()
+    const withD = (boards: object) => JSON.stringify({ ...JSON.parse(canvas(1)), designSystems: [{ namespace: 'acme', version: '3' }], boards })
+    write(from, 'project/canvas.json', withD(JSON.parse(canvas(1)).boards))
+    for (let n = 0; n < 30; n++) write(from, `project/ds/acme/f${n}.js`, '//')
+    write(from, 'project/logo.png', 'png')
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    expect(record(dir)).toMatchObject({ files: 37, canvasBoards: 4 })
+    expect(record(dir).unread).toBeUndefined()
+    // A fold-in adds D; the read for it holds one of the 30 design system files and not the image.
     const small = mkdtempSync(join(tmpdir(), 'drawing-board-small-'))
-    write(small, 'project/canvas.json', readFileSync(join(from, 'project/canvas.json'), 'utf8'))
+    write(small, 'project/canvas.json', withD({ ...JSON.parse(canvas(1)).boards, 'D.dc.html': { w: 1, h: 1, page: 'main' } }))
     write(small, 'project/tokens.json', readFileSync(join(from, 'project/tokens.json'), 'utf8'))
-    write(small, 'project/A.dc.html', board('new'))
-    run(dir, ['snapshot', '--from', small, '--version', 'v3', '--boards', 'A.dc.html'])
-    expect(record()).toMatchObject({ version: 'v3', files: 8 })
+    write(small, 'project/ds/acme/f0.js', '//')
+    write(dir, 'canvas/boards/D.map.json', '{"none":"later"}')
+    run(dir, ['snapshot', '--from', small, '--version', 'v2', '--boards', 'D.dc.html'])
+    expect(record(dir)).toMatchObject({ version: 'v2', files: 38, canvasBoards: 5 })
+    expect(run(dir, ['check']).stdout).toContain('Canvas files: 38 of 512 in use, 474 free (canvas version v2).')
+  })
+
+  it('stores the count as counted on the first partial refresh after an old record', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(dir, 'canvas/artifact.json', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', files: 50 }))
+    const partial = run(dir, ['snapshot', '--from', from, '--version', 'v2', '--boards', 'A.dc.html'])
+    expect(partial.status).toBe(0)
+    expect(record(dir)).toMatchObject({ files: 6, canvasBoards: 4 })
   })
 })
 
