@@ -234,7 +234,7 @@ export const parseConfig = (text: string, root: string, name: string = CONFIG_FI
     ...(designSystems === undefined ? {} : { designSystems }),
     root,
   }
-  const loaded = hidden(config, main, canvases, parseLimits(raw.limits, name))
+  const loaded = withFields(config, main, canvases, parseLimits(raw.limits, name))
   return canvasId === undefined ? loaded : withCanvas(loaded, canvasId)
 }
 
@@ -256,14 +256,8 @@ export const loadConfig = (path?: string, canvasId?: string): Config => {
 /** A config for each canvas that has a snapshot, main first, the others in the order the file lists them. */
 export const snapshotConfigs = (config: Config): Config[] => [config.canvases.find(c => c.role === 'main')!, ...config.canvases.filter(c => c.role !== 'main')].filter(c => c.snapshot !== undefined).map(c => withCanvas(config, c.id))
 
-// Which canvas, every canvas and the limits are always there but kept out of the enumerable fields, so a config
-// with no new settings lists, spreads and compares field for field as it did before canvases.
-const hidden = (fields: Omit<Config, 'canvas' | 'canvases' | 'limits'>, chosen: Canvas, canvases: Canvas[], limits: Limits): Config =>
-  Object.defineProperties(fields, {
-    canvas: { value: { id: chosen.id, role: chosen.role }, enumerable: false, writable: true, configurable: true },
-    canvases: { value: canvases, enumerable: false, writable: true, configurable: true },
-    limits: { value: limits, enumerable: false, writable: true, configurable: true },
-  }) as Config
+/** A config with its chosen canvas, every canvas and the limits, as ordinary fields. */
+const withFields = (fields: Omit<Config, 'canvas' | 'canvases' | 'limits'>, chosen: Canvas, canvases: Canvas[], limits: Limits): Config => ({ ...fields, canvas: { id: chosen.id, role: chosen.role }, canvases, limits })
 
 /** The same config for another of its canvases: its link, snapshot and prototype pages, and `differences` when that follows the snapshot. */
 export const withCanvas = (config: Config, canvasId: string): Config => {
@@ -272,5 +266,5 @@ export const withCanvas = (config: Config, canvasId: string): Config => {
   if (chosen.snapshot === undefined) throw new SnapshotError(`The canvas "${chosen.id}" (${chosen.role}) has no snapshot${chosen.role === 'prototypes' ? ': prototypes are never read into one' : ': set its "snapshot" to keep one'}.`)
   const followed = config.differences === join(config.snapshot, 'differences')
   const next = { ...config, artifact: chosen.artifact, snapshot: chosen.snapshot, prototypePages: chosen.prototypePages, differences: followed ? join(chosen.snapshot, 'differences') : config.differences }
-  return hidden(next, chosen, config.canvases, config.limits)
+  return withFields(next, chosen, config.canvases, config.limits)
 }

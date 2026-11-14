@@ -22,6 +22,9 @@ describe('parseConfig', () => {
       checks: {},
       themes: [],
       root,
+      canvas: { id: 'main', role: 'main' },
+      canvases: [{ id: 'main', role: 'main', artifact: null, snapshot: resolve(root, DEFAULTS.snapshot), prototypePages: TICKET_PAGE }],
+      limits: { files: 512, headroom: 16 },
     })
   })
 
@@ -130,7 +133,6 @@ describe('canvases', () => {
     expect(config.canvases).toEqual([{ id: 'main', role: 'main', artifact: link('m'), snapshot: resolve(root, 'dc'), prototypePages: TICKET_PAGE }])
     expect(config.limits).toEqual(DEFAULT_LIMITS)
     expect(config.designSystems).toBeUndefined()
-    expect(Object.keys(config)).not.toContain('canvases')
   })
 
   it('takes the main canvas by default, its snapshot by convention, and every canvas resolved', () => {
