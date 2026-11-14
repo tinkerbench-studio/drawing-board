@@ -18,6 +18,7 @@ describe('parseConfig', () => {
       prototypePages: TICKET_PAGE,
       storybook: resolve(root, 'storybook-static'),
       out: resolve(root, 'reports/design-canvas'),
+      differences: resolve(root, DEFAULTS.snapshot, 'differences'),
       themes: [],
       root,
     })
@@ -30,6 +31,12 @@ describe('parseConfig', () => {
     expect(config.prototypePages.test('Prototypes page')).toBe(true)
     expect(config.storybook).toBe(resolve(root, 'storybook-static'))
     expect(config.stories).toEqual(DEFAULTS.stories)
+  })
+
+  it('keeps the differences lists in the snapshot unless told where else, and follows a moved snapshot', () => {
+    expect(parseConfig(JSON.stringify({ snapshot: 'fixtures/dc' }), root).differences).toBe(resolve(root, 'fixtures/dc/differences'))
+    expect(parseConfig(JSON.stringify({ snapshot: 'fixtures/dc', differences: 'fixtures/diffs' }), root).differences).toBe(resolve(root, 'fixtures/diffs'))
+    expect(() => parseConfig(JSON.stringify({ differences: '' }), root)).toThrow(/"differences" must be a non-empty string/)
   })
 
   it('reads the canvas link the last snapshot recorded when the file does not set one', () => {

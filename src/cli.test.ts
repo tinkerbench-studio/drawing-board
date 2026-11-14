@@ -99,4 +99,13 @@ describe('the picture commands', () => {
     expect(shot.status).toBe(1)
     expect(shot.stderr).toMatch(/not a built Storybook/)
   })
+
+  it('know annotate (and its earlier name board-shot) and layout, and refuse a bad flag naming it', () => {
+    const bare = mkdtempSync(join(tmpdir(), 'drawing-board-bare-'))
+    for (const command of ['annotate', 'board-shot']) expect(run(bare, [command, '--board', 'Main']).stderr).toMatch(/--board names a board file/)
+    const layout = run(bare, ['layout', '--board', 'Main'])
+    expect(layout.status).toBe(1)
+    expect(layout.stderr).toMatch(/--board names a board file/)
+    expect(run(bare, ['layout', '--width', '5']).stderr).toMatch(/--width is a number, 200 or more/)
+  })
 })

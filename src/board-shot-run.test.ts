@@ -1,6 +1,6 @@
 // board-shot and compare end to end, on a stand-in project: a snapshot with one board and a built Storybook whose one
 // story differs from it. Needs a Chromium (PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH); without one it is skipped.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -57,6 +57,25 @@ describe.skipIf(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH === undefined)('
     expect(md).not.toMatch(/found by comparing/)
     write(dir, 'design/canvas/differences/Ticket.json', JSON.stringify({ differences: [{ title: 'Gone', detail: 'x', board: '#gone', story: null }] }))
     await expect(boardShot(config, { board: 'Ticket.dc.html' })).rejects.toThrow(/nothing matches "#gone"/)
+  })
+
+  it('reads the differences list from the folder the differences setting names', { timeout: 60000 }, async () => {
+    const { dir } = project()
+    write(dir, 'elsewhere/Ticket.json', JSON.stringify({ differences: [{ title: 'Save button', detail: 'Kept in another folder.', board: '#save', story: '#save' }] }))
+    const md = readFileSync((await boardShot(parseConfig(JSON.stringify({ differences: 'elsewhere' }), dir), { board: 'Ticket.dc.html' })).legend, 'utf8')
+    expect(md).toMatch(/\| 1 \| Red \| \*\*Save button\*\*: Kept in another folder\./)
+  })
+
+  it('draws the story the project’s storyPage() hook returns, with no built Storybook, and names it in the banner', { timeout: 60000 }, async () => {
+    const { dir } = project()
+    rmSync(join(dir, 'storybook-static'), { recursive: true })
+    write(dir, 'hooks.mjs', `export const storyPage = ({ board, story }) => ({ html: '<main style="padding:20px"><h1>Trips</h1><button id="save">Save</button> <button>Keep</button></main>' })`)
+    const { image, legend } = await boardShot(parseConfig(JSON.stringify({ hooks: 'hooks.mjs' }), dir), { board: 'Ticket.dc.html' })
+    expect(existsSync(image)).toBe(true)
+    const md = readFileSync(legend, 'utf8')
+    expect(md).toContain('Story: Pages/Ticket › the project’s storyPage() hook (storyPage)')
+    expect(md).toMatch(/\*\*button: Export\*\*: On the board only/)
+    expect(md).toMatch(/\*\*button: Keep\*\*: In the story only/)
   })
 
   it('compares every mapped board with its story, writing the report', { timeout: 60000 }, async () => {

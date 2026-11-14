@@ -12,6 +12,7 @@ import { HOOK_NAMES, loadHooks } from './hooks.ts'
 import { launch, serve } from './pictures-run.ts'
 import { storyUrl } from './pictures.ts'
 import { project } from './project.ts'
+import { openStorySide, pickStory, storybookEntries, type IndexEntry } from './story-side.ts'
 
 /** Fonts from the canvas do not load offline, so both sides are drawn in one family: their text is then the same width. */
 export const SAME_FONT_CSS = '*, *::before, *::after { font-family: Arial, Helvetica, sans-serif !important; }'
@@ -37,22 +38,7 @@ export const boardShotOptions = (argv: readonly string[]): BoardShotOptions => {
   return { ...(board === undefined ? {} : { board }), ...(flags.storybook ? { storybook: flags.storybook } : {}), ...(flags['story-id'] ? { storyId: flags['story-id'] } : {}), ...(width === undefined ? {} : { width }), ...(flags.theme ? { theme: flags.theme as 'light' | 'dark' } : {}), ...(flags.out ? { out: flags.out } : {}), ...(flags['boards-dir'] ? { boardsDir: flags['boards-dir'] } : {}) }
 }
 
-type IndexEntry = { id: string; title: string; name: string; type?: string }
-
-/** The story a board's picture shows: `--story-id`, else its map entry's full-page export (`page`), else the first story with its title. */
-export const pickStory = (entries: readonly IndexEntry[], story: string, page?: string, id?: string): IndexEntry => {
-  const stories = entries.filter(e => e.type !== 'docs')
-  if (id !== undefined) {
-    const found = stories.find(e => e.id === id)
-    if (!found) throw new BoardShotError(`No story "${id}" in the built Storybook: list the ids with drawing-board story-shot <dir> --list.`)
-    return found
-  }
-  const titled = stories.filter(e => e.title === story)
-  const kebab = page?.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
-  const found = kebab === undefined ? titled[0] : titled.find(e => e.id.endsWith(`--${kebab}`))
-  if (!found) throw new BoardShotError(`No story titled "${story}"${page ? ` with the export ${page}` : ''} in the built Storybook: build Storybook from this branch, or pass --story-id.`)
-  return found
-}
+export { pickStory }
 
 type Page = Awaited<ReturnType<Awaited<ReturnType<typeof launch>>['newPage']>>
 
@@ -126,20 +112,17 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
   if (!existsSync(join(boardsDir, board))) throw new BoardShotError(`${board} has no copy in ${boardsDir}: map it to a story and refresh the snapshot, or pass --boards-dir.`)
   const entry = canvas.map()[board]
   if (entry?.story === undefined) throw new BoardShotError(`${board} maps to no story, so there is nothing to put beside it.`)
-  const storybook = resolve(options.storybook ?? config.storybook)
-  if (!existsSync(join(storybook, 'index.json'))) throw new BoardShotError(`${storybook} is not a built Storybook (no index.json): build Storybook first.`)
-  const index = JSON.parse(readFileSync(join(storybook, 'index.json'), 'utf8')) as { entries?: Record<string, IndexEntry>; stories?: Record<string, IndexEntry> }
-  const story = pickStory(Object.values(index.entries ?? index.stories ?? {}), entry.story, typeof entry.page === 'string' ? entry.page : undefined, options.storyId)
+  const hooks = await loadHooks(config)
   const meta = canvas.metas().find(m => m.file === board)
   const width = options.width ?? Math.min(meta?.w ?? 1280, 1440)
-  const listFile = canvas.file(differencesFile(board))
+  const listFile = join(config.differences, differencesFile(board).replace(/^differences\//, ''))
 
   const boards = await serve(boardsDir)
-  const built = await serve(storybook)
+  const story = await openStorySide(config, hooks, board, options)
   const browser = await launch()
   try {
     const boardPage = await open(browser, `${boards.base}/${board}`, width)
-    const storyPage = await open(browser, storyUrl(built.base, story.id, options.theme), width, '#storybook-root > *, #root > *')
+    const storyPage = await open(browser, story.url, width, story.ready)
     const decided = Array.isArray(entry.decided) ? entry.decided.filter((d): d is string => typeof d === 'string') : []
     let list = existsSync(listFile) ? parseDifferences(readFileSync(listFile, 'utf8'), board) : seedDifferences(await boardPage.content(), await storyPage.evaluate(() => (document.querySelector('#storybook-root') ?? document.body).innerHTML), decided)
     if (list.seeded) {
@@ -174,7 +157,7 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
   } finally {
     await browser.close()
     boards.server.close()
-    built.server.close()
+    story.close()
   }
 }
 
@@ -186,9 +169,7 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
 export const compareStories = async (config: Config, storybookDir = config.storybook): Promise<string> => {
   const canvas = project(config)
   const storybook = resolve(storybookDir)
-  if (!existsSync(join(storybook, 'index.json'))) throw new BoardShotError(`${storybook} is not a built Storybook (no index.json): build Storybook first.`)
-  const index = JSON.parse(readFileSync(join(storybook, 'index.json'), 'utf8')) as { entries?: Record<string, IndexEntry>; stories?: Record<string, IndexEntry> }
-  const entries = Object.values(index.entries ?? index.stories ?? {})
+  const entries = storybookEntries(storybook)
   const map = canvas.map()
   const boards = await serve(canvas.file('boards'))
   const built = await serve(storybook)

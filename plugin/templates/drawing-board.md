@@ -35,7 +35,7 @@ pinned script, the commands below are
 | Rebuild the story index | `npx drawing-board index` | After editing a map file's `story`, or merging one |
 | Boards with no story, stories with no board | `npx drawing-board report` | |
 | Compare each board with its story | `npx drawing-board compare` | Advisory; needs a built Storybook |
-| The board-beside-story picture | `npx drawing-board board-shot --board <Board>.dc.html` | For `ux-picture`: banners, numbered boxes, the table |
+| The board-beside-story picture | `npx drawing-board annotate --board <Board>.dc.html` | For `ux-picture`: banners, numbered boxes, the table |
 | The pages' pictures | `npx drawing-board page-shots` | From the hook's `pages()`; or "none" |
 | A story's pictures | `npx drawing-board story-shot <storybook-static-dir> <story-id> <out.png>` | `--list` for the ids |
 | Before and after, changes outlined | `npx drawing-board compare-pictures <before-dir> <after-dir> <out-dir>` | Pairs pictures by name |
