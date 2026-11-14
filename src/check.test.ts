@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagProblems, tokenBoardProblems, tokenEntries } from './check.ts'
+import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, unreadBound, tokenBoardProblems, tokenEntries } from './check.ts'
 import { copyHash, indexOf, storyIndexOf, type BoardMap, type BoardMeta } from './snapshot.ts'
 
 const meta = (file: string, source?: string): BoardMeta => ({ file, title: null, page: null, w: 1, h: 1, ...(source === undefined ? {} : { copy: { hash: copyHash(source), version: 'v1' } }) })
@@ -119,24 +119,28 @@ describe('snapshotProblems and componentProblems', () => {
 describe('filesInUse', () => {
   const limits = { files: 512, headroom: 16 }
   it('says the files in use and free, as information, when there is room', () => {
-    expect(filesInUse({ used: 300, exact: true, limits, version: '41' })).toEqual({ line: 'Canvas files: 300 of 512 in use, 212 free (canvas version 41).', warning: false })
+    expect(filesInUse({ used: 300, limits, version: '41' })).toEqual({ line: 'Canvas files: 300 of 512 in use, 212 free (canvas version 41).', warning: false })
   })
   it('warns when fewer than the headroom are free, and says what a design costs', () => {
-    const low = filesInUse({ used: 500, exact: true, limits, version: '41' })
+    const low = filesInUse({ used: 500, limits, version: '41' })
     expect(low.warning).toBe(true)
     expect(low.line).toMatch(/^Canvas files: 500 of 512 in use, 12 free \(canvas version 41\)\. Fewer than 16 are free: a design adds about four files/)
-    expect(filesInUse({ used: 496, exact: true, limits }).warning).toBe(false)
+    expect(filesInUse({ used: 496, limits }).warning).toBe(false)
   })
   it('warns that a full canvas refuses a publish, and never counts below none free', () => {
-    const full = filesInUse({ used: 520, exact: true, limits })
+    const full = filesInUse({ used: 520, limits })
     expect(full.warning).toBe(true)
     expect(full.line).toMatch(/^Canvas files: 520 of 512 in use, 0 free\. The canvas is full: a publish that adds a file is refused/)
-    expect(filesInUse({ used: 512, exact: true, limits: { files: 512, headroom: 0 } }).warning).toBe(true)
+    expect(filesInUse({ used: 512, limits: { files: 512, headroom: 0 } }).warning).toBe(true)
   })
-  it('says a count from the meta files is a lower bound that a refresh makes exact', () => {
-    const bound = filesInUse({ used: 102, exact: false, limits })
-    expect(bound).toEqual({ line: 'Canvas files: at least 102 of 512 in use, at most 410 free: artifact.json records no file count, so this is the meta files plus 2, and a refresh records the exact count.', warning: false })
-    expect(filesInUse({ used: 500, exact: false, limits }).warning).toBe(true)
+  it('says a count from the meta files is a lower bound, and whether there is a record yet', () => {
+    expect(filesInUse({ used: 102, limits, bound: metaCountBound(true) })).toEqual({ line: 'Canvas files: at least 102 of 512 in use, at most 410 free: artifact.json records no file count, so this is the meta files plus 2, and a refresh records the count.', warning: false })
+    expect(filesInUse({ used: 102, limits, bound: metaCountBound(false) }).line).toBe('Canvas files: at least 102 of 512 in use, at most 410 free: there is no artifact.json yet, so this is the meta files plus 2, and a refresh records the count.')
+    expect(filesInUse({ used: 500, limits, bound: metaCountBound(true) }).warning).toBe(true)
+  })
+  it("says a count from a read without a design system's files is a lower bound", () => {
+    expect(filesInUse({ used: 40, limits, bound: unreadBound(['acme']) }).line).toBe('Canvas files: at least 40 of 512 in use, at most 472 free: the folder holds no files of the design system acme under project/ds/, so they were not read and not counted.')
+    expect(unreadBound(['a', 'b'])).toMatch(/design systems a, b/)
   })
 })
 
@@ -183,12 +187,12 @@ describe('pageProblems', () => {
   })
 })
 
-describe('tagProblems', () => {
+describe('tagWarnings', () => {
   it('passes tags that are a list of non-empty strings, and entries with none', () => {
-    expect(tagProblems({ 'A.dc.html': { story: 'S', tags: ['merge queue'] }, 'B.dc.html': { none: 'x' } })).toEqual([])
+    expect(tagWarnings({ 'A.dc.html': { story: 'S', tags: ['merge queue'] }, 'B.dc.html': { none: 'x' } })).toEqual([])
   })
-  it.each([['merge queue'], [['ok', '']], [[1]], [{ a: 'b' }]])('fails tags of %j', tags => {
-    expect(tagProblems({ 'A.dc.html': { story: 'S', tags } as BoardMap[string] })).toEqual(['A.dc.html: "tags" in boards/A.map.json must be a list of non-empty strings, such as ["merge queue"].'])
+  it.each([['merge queue'], [['ok', '']], [[1]], [{ a: 'b' }]])('warns about tags of %j', tags => {
+    expect(tagWarnings({ 'A.dc.html': { story: 'S', tags } as BoardMap[string] })).toEqual(['A.dc.html: "tags" in boards/A.map.json is not a list of non-empty strings, such as ["merge queue"], so find does not read it.'])
   })
 })
 

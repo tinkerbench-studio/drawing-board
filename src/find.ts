@@ -16,7 +16,7 @@ export const nameWords = (file: string): string => {
 /** Everything a board is found by, lowercased: its name (in words too), title, page and that page's flow and keywords, its map entry's story, tags and reason for no story, and its component and sample names. */
 export const searchText = (meta: BoardMeta, entry: BoardMap[string] | undefined, pages: Pages | undefined): string => {
   const page = meta.page === null ? undefined : pages?.[meta.page]
-  const tags = Array.isArray(entry?.tags) ? entry.tags : []
+  const tags = Array.isArray(entry?.tags) && entry.tags.every(t => typeof t === 'string') ? entry.tags : []
   return [nameWords(meta.file), meta.title, meta.page, page?.flow, ...(page?.keywords ?? []), entry?.story, ...tags, entry?.none, ...Object.keys(meta.components ?? {}), ...Object.keys(meta.samples ?? {})]
     .filter((part): part is string => typeof part === 'string')
     .join('\n')

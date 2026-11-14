@@ -8,13 +8,13 @@ const limits = { files: 512, headroom: 16 }
 const meta = (file: string, page: string | null, source?: string): BoardMeta => ({ file, title: null, page, w: 1, h: 1, ...(source === undefined ? {} : { copy: { hash: copyHash(source), version: 'v1' } }) })
 const canvas = (boards: Record<string, string | null>, designSystems: object[] = []) => JSON.stringify({ pages: [{ id: 'main' }, { id: 'p', name: 'TCK-9' }], designSystems, boards: Object.fromEntries(Object.entries(boards).map(([file, page]) => [file, { w: 1, h: 1, page }])) })
 const folder = (files: Record<string, string>) => (path: string) => files[path]
-const status = (files: Record<string, string>, metas: BoardMeta[], more: object = {}) => canvasStatus({ from: 'read', read: folder(files), files: Object.keys(files).length, metas, prototype: TICKET_PAGE, limits, record: {}, ...more })
+const status = (files: Record<string, string>, metas: BoardMeta[], more: object = {}) => canvasStatus({ from: 'read', read: folder(files), paths: Object.keys(files), tokens: 'tokens.json', metas, prototype: TICKET_PAGE, limits, record: {}, ...more })
 
 describe('canvasStatus', () => {
-  it('says the snapshot is in step, with the exact file count, when nothing differs', () => {
+  it('says the snapshot is in step, counting every board canvas.json lists (prototypes too), when nothing differs', () => {
     const found = status({ 'canvas.json': canvas({ 'A.dc.html': 'main', 'Proto.dc.html': 'p' }), 'A.dc.html': '<p>a</p>' }, [meta('A.dc.html', 'main', '<p>a</p>')])
     expect(found.lines).toEqual(['The snapshot is in step with the canvas read.'])
-    expect(found.files).toEqual({ line: 'Canvas files: 2 of 512 in use, 510 free.', warning: false })
+    expect(found.files).toEqual({ line: 'Canvas files: 4 of 512 in use, 508 free.', warning: false })
   })
 
   it('names a board with no meta file and a meta file of a board no longer there, never a prototype', () => {
@@ -25,6 +25,7 @@ describe('canvasStatus', () => {
   })
 
   it('names a board on another page, a copy changed on the canvas, and a copy the folder does not hold', () => {
+    expect(status({ 'canvas.json': canvas({ 'Z.dc.html': 'b', 'Y.dc.html': 'b' }) }, [meta('Z.dc.html', 'a'), meta('Y.dc.html', 'a')]).moved.map(m => m.file)).toEqual(['Y.dc.html', 'Z.dc.html'])
     const found = status({ 'canvas.json': canvas({ 'A.dc.html': 'admin', 'B.dc.html': 'main', 'C.dc.html': 'main' }), 'B.dc.html': '<p>new</p>' }, [meta('A.dc.html', 'main'), meta('B.dc.html', 'main', '<p>old</p>'), meta('C.dc.html', 'main', '<p>c</p>')])
     expect(found.moved).toEqual([{ file: 'A.dc.html', snapshot: 'main', canvas: 'admin' }])
     expect(found.changed).toEqual(['B.dc.html'])
@@ -32,10 +33,17 @@ describe('canvasStatus', () => {
     expect(found.lines).toEqual(['A.dc.html is on the page admin on the canvas, main in the snapshot.', "Changed on the canvas since the snapshot's copy: B.dc.html.", 'Not in the folder, so not compared: C.dc.html.'])
   })
 
-  it('warns on the exact count when few files are free', () => {
-    const found = canvasStatus({ from: 'read', read: folder({ 'canvas.json': canvas({ 'A.dc.html': 'main' }) }), files: 502, metas: [meta('A.dc.html', 'main')], prototype: TICKET_PAGE, limits, record: {} })
+  it("counts the design system's files read, and warns when few files are free", () => {
+    const installed = [{ namespace: 'acme', version: '3' }]
+    const files = { 'canvas.json': canvas({ 'A.dc.html': 'main' }, installed), 'tokens.json': '{}', ...Object.fromEntries(Array.from({ length: 499 }, (_, n) => [`ds/acme/f${n}.js`, ''])) }
+    const found = status(files, [meta('A.dc.html', 'main')], { record: { designSystems: { acme: '3' } } })
     expect(found.files.warning).toBe(true)
     expect(found.files.line).toMatch(/^Canvas files: 502 of 512 in use, 10 free\. Fewer than 16/)
+  })
+
+  it("says the count is a lower bound when the read holds none of an installed design system's files", () => {
+    const found = status({ 'canvas.json': canvas({ 'A.dc.html': 'main' }, [{ namespace: 'acme', version: '3' }]) }, [meta('A.dc.html', 'main')], { record: { designSystems: { acme: '3' } } })
+    expect(found.files.line).toBe('Canvas files: at least 3 of 512 in use, at most 509 free: the folder holds no files of the design system acme under project/ds/, so they were not read and not counted.')
   })
 
   it('compares the design systems installed with the record and with the setting', () => {

@@ -1,8 +1,8 @@
 // One project's snapshot on disk, read through its config: the files, the story titles and the checks.
 import { existsSync, globSync, readdirSync, readFileSync, type Dirent } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, relative, sep } from 'node:path'
 
-import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
+import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import { snapshotConfigs, type Config } from './config.ts'
 import { outlineProblems, passedSampleProblems, sampleKeyProblems, themeValueProblems, tokenCssProblems } from './extra-checks.ts'
 import { componentMarkup } from './html.ts'
@@ -63,18 +63,20 @@ export const checkProblems = (config: Config): string[] => {
   const all = p.metas()
   const screens = screensOf(map)
   const known = existsSync(p.file(UNPUBLISHED_KNOWN)) ? (JSON.parse(p.read(UNPUBLISHED_KNOWN)) as UnpublishedKnown) : {}
-  const tokensBoard = config.tokensBoard === undefined ? [] : p.copy(config.tokensBoard) === undefined ? [`${config.tokensBoard} is the tokens board but has no copy in boards/: map it to its story and refresh.`] : tokenBoardProblems(parseTokens(p.read('tokens.json')), p.copy(config.tokensBoard)!)
+  // The tokens, and the settings that hold the canvas to them, are the main canvas's: another canvas is not held to them.
+  const main = config.canvas.role === 'main'
+  const tokensBoard = !main || config.tokensBoard === undefined ? [] : p.copy(config.tokensBoard) === undefined ? [`${config.tokensBoard} is the tokens board but has no copy in boards/: map it to its story and refresh.`] : tokenBoardProblems(parseTokens(p.read('tokens.json')), p.copy(config.tokensBoard)!)
   const copyTexts = () => Object.fromEntries(p.copies().map(f => [f, p.read(`boards/${f}`)]))
   const pages = p.pages()
-  const own = [...tagProblems(map), ...recordProblems(p.record(), { id: config.canvas.id, artifact: config.artifact }), ...(pages === undefined ? [] : pageProblems(all, pages))]
+  const own = [...recordProblems(p.record(), { id: config.canvas.id, artifact: config.artifact }), ...(pages === undefined ? [] : pageProblems(all, pages))]
   const { checks } = config
   const repeated = checks.repeatedSampleKeys ? sampleKeyProblems(copyTexts()) : []
   const extra = [
     ...repeated,
     ...(checks.outlineSelectors ? outlineProblems(map, p.copy) : []),
     ...(checks.passedSamples ? passedSampleProblems(copyTexts()) : []),
-    ...(checks.tokenThemes ? themeValueProblems(JSON.parse(p.read('tokens.json'))) : []),
-    ...(checks.tokensCss ? tokensCssProblems(config, p.read('tokens.json'), checks.tokensCss) : []),
+    ...(main && checks.tokenThemes ? themeValueProblems(JSON.parse(p.read('tokens.json'))) : []),
+    ...(main && checks.tokensCss ? tokensCssProblems(config, p.read('tokens.json'), checks.tokensCss) : []),
   ]
   // A repeated key would stop the snapshot comparison below with a plainer refusal, so say it, and the rest, on its own.
   if (repeated.length > 0) return [...own, ...extra]
@@ -100,34 +102,39 @@ export const checkProblems = (config: Config): string[] => {
 
 
 /**
- * The canvas's files against its limit, as `check` says it: the count a refresh recorded in artifact.json, else a
- * lower bound from the meta files (plus canvas.json and the tokens).
+ * The canvas's files against its limit, as `check` says it: the count the last refresh recorded in artifact.json,
+ * else a lower bound from the meta files (plus canvas.json and the tokens).
  */
 export const canvasFiles = (config: Config): { line: string; warning: boolean } => {
   const p = project(config)
   const record = p.record()
   const { limits } = config
   const version = record.version === undefined ? {} : { version: record.version }
-  return filesInUse(record.files === undefined ? { used: p.metas().length + 2, exact: false, limits, ...version } : { used: record.files, exact: true, limits, ...version })
+  return filesInUse(record.files === undefined ? { used: p.metas().length + 2, limits, ...version, bound: metaCountBound(existsSync(p.file(ARTIFACT_RECORD))) } : { used: record.files, limits, ...version })
 }
 
 /**
  * What `check` warns about without failing: few or no free files on the canvas, boards the canvas has that the
- * snapshot does not, design systems not at the version the project expects, and a board mapped none that looks
- * built. Empty when there is nothing to say.
+ * snapshot does not, design systems not at the version the project expects, a board mapped none that looks built,
+ * and `tags` of the wrong shape. Empty when there is nothing to say.
  */
 export const checkWarnings = (config: Config): string[] => {
   const p = project(config)
   const record = p.record()
+  const map = p.map()
   const files = canvasFiles(config)
-  return [...(files.warning ? [files.line] : []), ...missingBoardWarnings(record, p.metas().map(m => m.file)), ...designSystemWarnings(config.designSystems ?? {}, record.designSystems), ...noneWarnings(p.map(), storyTexts(config))]
+  return [...(files.warning ? [files.line] : []), ...missingBoardWarnings(record, p.metas().map(m => m.file)), ...designSystemWarnings(config.designSystems ?? {}, record.designSystems), ...noneWarnings(map, storyTexts(config)), ...tagWarnings(map)]
 }
 
 /** A board file with a meta file in the snapshots of two canvases, across every canvas that has a snapshot. */
 export const boardNameProblems = (config: Config): string[] => duplicateBoardProblems(Object.fromEntries(snapshotConfigs(config).map(c => [c.canvas.id, project(c).metas().map(m => m.file)])))
 
-/** The count of regular files under `<from>/project`, recursively: what a canvas read holds of its own (boards, canvas.json, the tokens, installed design system files). */
-export const canvasFileCount = (from: string): number => {
+/** Every regular file under `<from>/project`, recursively, as a path relative to it with `/` between folders: what a read of the canvas holds. */
+export const readFiles = (from: string): string[] => {
   const dir = join(from, 'project')
-  return existsSync(dir) ? (readdirSync(dir, { recursive: true, withFileTypes: true }) as Dirent[]).filter(entry => entry.isFile()).length : 0
+  if (!existsSync(dir)) return []
+  return (readdirSync(dir, { recursive: true, withFileTypes: true }) as Dirent[])
+    .filter(entry => entry.isFile())
+    .map(entry => relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/'))
+    .sort()
 }

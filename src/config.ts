@@ -268,3 +268,17 @@ export const withCanvas = (config: Config, canvasId: string): Config => {
   const next = { ...config, artifact: chosen.artifact, snapshot: chosen.snapshot, prototypePages: chosen.prototypePages, differences: followed ? join(chosen.snapshot, 'differences') : config.differences }
   return withFields(next, chosen, config.canvases, config.limits)
 }
+
+/**
+ * The canvas `--canvas <id>` names in a command's argv, or undefined when there is none. Refuses `--canvas` with no id,
+ * one followed by another flag, and the `--canvas=<id>` form, so a typo cannot fall back to the main canvas (a full
+ * refresh would then write another canvas's read over the main snapshot).
+ */
+export const canvasOption = (argv: readonly string[]): string | undefined => {
+  if (argv.some(a => a.startsWith('--canvas='))) throw new SnapshotError('Write --canvas <id>, with a space: --canvas=<id> is not read.')
+  const at = argv.indexOf('--canvas')
+  if (at === -1) return undefined
+  const id = argv[at + 1]
+  if (id === undefined || id.startsWith('--')) throw new SnapshotError('--canvas names no canvas: put its id after it, as --canvas reference.')
+  return id
+}

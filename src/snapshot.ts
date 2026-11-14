@@ -226,10 +226,11 @@ export const snapshotOptions = (argv: readonly string[]): { from: string; versio
 export const ARTIFACT_RECORD = 'artifact.json'
 /**
  * What `artifact.json` holds: the canvas's id in the config, its link, the version read, the version of the last full
- * refresh, the files the canvas held (every file under `project/`), its boards outside prototype pages and the design
- * systems installed on it. A record written by an earlier release holds only `artifact`, so every field may be missing.
+ * refresh, the files the canvas holds ({@link countCanvasFiles}) and how many of them are boards (on every page), its
+ * boards outside prototype pages and the design systems installed on it. A record written by an earlier release holds
+ * only `artifact`, so every field may be missing.
  */
-export type ArtifactRecord = { canvas?: string; artifact?: string; version?: string; fullVersion?: string; files?: number; boards?: string[]; designSystems?: Record<string, string> }
+export type ArtifactRecord = { canvas?: string; artifact?: string; version?: string; fullVersion?: string; files?: number; canvasBoards?: number; boards?: string[]; designSystems?: Record<string, string> }
 
 const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(v => typeof v === 'string')
 const sortedRecord = <T>(entries: [string, T][]): Record<string, T> => Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
@@ -245,7 +246,7 @@ export const parseRecord = (text: string): ArtifactRecord => {
   if (!isRecord(raw)) throw new SnapshotError(`${ARTIFACT_RECORD} is not a JSON object: refresh the snapshot to write it again.`)
   const record: ArtifactRecord = {}
   for (const key of ['canvas', 'artifact', 'version', 'fullVersion'] as const) if (typeof raw[key] === 'string') record[key] = raw[key]
-  if (typeof raw.files === 'number' && Number.isInteger(raw.files) && raw.files >= 0) record.files = raw.files
+  for (const key of ['files', 'canvasBoards'] as const) if (typeof raw[key] === 'number' && Number.isInteger(raw[key]) && raw[key] >= 0) record[key] = raw[key]
   if (isStringList(raw.boards)) record.boards = raw.boards
   if (isRecord(raw.designSystems)) record.designSystems = sortedRecord(Object.entries(raw.designSystems).filter((e): e is [string, string] => typeof e[1] === 'string'))
   return record
@@ -257,18 +258,41 @@ export const designSystemsOf = (canvas: unknown): Record<string, string> => {
   return sortedRecord(list.filter(isRecord).flatMap(d => (typeof d.namespace === 'string' && typeof d.version === 'string' ? [[d.namespace, d.version] as [string, string]] : [])))
 }
 
+/** How many files a canvas holds, from a read of it, and how many of them are boards. `unread` names each installed design system whose files the read does not hold, so `files` is then a lower bound. */
+export type FileCount = { files: number; boards: number; unread: string[] }
+
+/**
+ * The files a canvas holds, from a read of it: `canvas.json` lists every board, on every page (prototype pages too),
+ * whether the read holds it or not; add canvas.json, the tokens file and every other file the read holds (installed
+ * design systems under `ds/`, assets). The larger of that and the read's own count. `paths` are the read's files,
+ * relative to `project/`. A design system canvas.json lists with no file under `ds/<namespace>/` in the read is named
+ * in `unread`.
+ */
+export const countCanvasFiles = (canvas: unknown, tokens: string, paths: readonly string[]): FileCount => {
+  const boards = isRecord(canvas) && isRecord(canvas.boards) ? Object.keys(canvas.boards) : []
+  const known = new Set([...boards, 'canvas.json', tokens])
+  const others = paths.filter(path => !known.has(path)).length
+  const unread = Object.keys(designSystemsOf(canvas)).filter(ns => !paths.some(path => path.startsWith(`ds/${ns}/`)))
+  return { files: Math.max(boards.length + 2 + others, paths.length), boards: boards.length, unread }
+}
+
 /**
  * The text of `artifact.json` after a refresh, its keys in a fixed order. A full refresh sets `fullVersion` to the
- * version read; a partial one keeps the previous record's, or leaves it out when there was none.
+ * version read; a partial one keeps the previous record's, or leaves it out when there was none. The file count is
+ * stored as counted, except that a partial refresh never lowers it while the canvas has as many boards as before: a
+ * read for a few boards often leaves out files a full read held.
  */
-export const recordText = (input: { canvas: string; artifact: string; version: string; full: boolean; previous?: ArtifactRecord; files: number; boards: readonly string[]; designSystems: Record<string, string> }): string => {
+export const recordText = (input: { canvas: string; artifact: string; version: string; full: boolean; previous?: ArtifactRecord; files: FileCount; boards: readonly string[]; designSystems: Record<string, string> }): string => {
   const fullVersion = input.full ? input.version : input.previous?.fullVersion
+  const previous = input.previous?.files
+  const kept = !input.full && previous !== undefined && input.previous?.canvasBoards === input.files.boards && previous > input.files.files
   const record: ArtifactRecord = {
     canvas: input.canvas,
     artifact: input.artifact,
     version: input.version,
     ...(fullVersion === undefined ? {} : { fullVersion }),
-    files: input.files,
+    files: kept ? previous : input.files.files,
+    canvasBoards: input.files.boards,
     boards: [...input.boards].sort(),
     designSystems: sortedRecord(Object.entries(input.designSystems)),
   }

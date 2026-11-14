@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { CONFIG_FILE, DEFAULT_LIMITS, DEFAULTS, findConfig, LEGACY_CONFIG_FILE, loadConfig, parseConfig, snapshotConfigs } from './config.ts'
+import { canvasOption, CONFIG_FILE, DEFAULT_LIMITS, DEFAULTS, findConfig, LEGACY_CONFIG_FILE, loadConfig, parseConfig, snapshotConfigs } from './config.ts'
 import { TICKET_PAGE } from './snapshot.ts'
 
 const root = resolve('/project')
@@ -232,5 +232,15 @@ describe('designSystems and limits', () => {
     [{ limits: { headroom: 1.5 } }, /"limits.headroom" must be a whole number/],
   ])('refuse %j', (settings, message) => {
     expect(() => parseConfig(JSON.stringify(settings), root)).toThrow(message)
+  })
+})
+
+describe('canvasOption', () => {
+  it('is the id after --canvas, or none', () => {
+    expect(canvasOption(['check', '--canvas', 'reference'])).toBe('reference')
+    expect(canvasOption(['check'])).toBeUndefined()
+  })
+  it.each([[['--canvas']], [['--canvas', '--config', 'x']], [['--canvas=reference']]])('refuses %j rather than fall back to the main canvas', argv => {
+    expect(() => canvasOption(argv)).toThrow(/--canvas/)
   })
 })

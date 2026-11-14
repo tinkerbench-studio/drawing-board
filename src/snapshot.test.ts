@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { boardsOf, buildSnapshot, copyHash, designSystemsOf, isMapFile, mapPath, notCopiedNotes, parseMap, parsePages, parseRecord, parseTokens, recordText, refreshedNames, screensOf, snapshotOptions, unrecordedBoards, type BoardMap } from './snapshot.ts'
+import { boardsOf, buildSnapshot, copyHash, countCanvasFiles, designSystemsOf, isMapFile, mapPath, notCopiedNotes, parseMap, parsePages, parseRecord, parseTokens, recordText, refreshedNames, screensOf, snapshotOptions, unrecordedBoards, type BoardMap } from './snapshot.ts'
 import { SnapshotError } from './sample.ts'
 
 const tokens = readFileSync(new URL('./fixtures/tokens.json', import.meta.url), 'utf8')
@@ -162,17 +162,33 @@ describe('snapshotOptions', () => {
 })
 
 describe('the record, artifact.json', () => {
-  const base = { canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', files: 40, boards: ['B.dc.html', 'A.dc.html'], designSystems: { zeta: '1', acme: '3' } }
+  const base = { canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', files: { files: 40, boards: 30, unread: [] }, boards: ['B.dc.html', 'A.dc.html'], designSystems: { zeta: '1', acme: '3' } }
 
   it('is written in a fixed key order, its boards and design systems sorted, and a full refresh sets fullVersion', () => {
     const text = recordText({ ...base, full: true })
-    expect(text).toBe(JSON.stringify({ canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', fullVersion: 'v2', files: 40, boards: ['A.dc.html', 'B.dc.html'], designSystems: { acme: '3', zeta: '1' } }, null, 2) + '\n')
-    expect(Object.keys(JSON.parse(text))).toEqual(['canvas', 'artifact', 'version', 'fullVersion', 'files', 'boards', 'designSystems'])
+    expect(text).toBe(JSON.stringify({ canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', fullVersion: 'v2', files: 40, canvasBoards: 30, boards: ['A.dc.html', 'B.dc.html'], designSystems: { acme: '3', zeta: '1' } }, null, 2) + '\n')
+    expect(Object.keys(JSON.parse(text))).toEqual(['canvas', 'artifact', 'version', 'fullVersion', 'files', 'canvasBoards', 'boards', 'designSystems'])
   })
 
   it('keeps the previous fullVersion on a partial refresh, and leaves it out when there was none', () => {
     expect(JSON.parse(recordText({ ...base, full: false, previous: { fullVersion: 'v1' } })).fullVersion).toBe('v1')
-    expect(Object.keys(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })))).toEqual(['canvas', 'artifact', 'version', 'files', 'boards', 'designSystems'])
+    expect(Object.keys(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })))).toEqual(['canvas', 'artifact', 'version', 'files', 'canvasBoards', 'boards', 'designSystems'])
+  })
+
+  it('never lets a partial refresh lower the count while the canvas has as many boards, and stores a full count as counted', () => {
+    const previous = { fullVersion: 'v1', files: 60, canvasBoards: 30 }
+    expect(JSON.parse(recordText({ ...base, full: false, previous })).files).toBe(60)
+    expect(JSON.parse(recordText({ ...base, full: false, previous, files: { files: 70, boards: 30, unread: [] } })).files).toBe(70)
+    expect(JSON.parse(recordText({ ...base, full: false, previous, files: { files: 38, boards: 28, unread: [] } })).files).toBe(38)
+    expect(JSON.parse(recordText({ ...base, full: true, previous })).files).toBe(40)
+    expect(JSON.parse(recordText({ ...base, full: false, previous: { files: 60 } })).files).toBe(40)
+  })
+
+  it('counts every board canvas.json lists, on any page, canvas.json, the tokens and the other files read', () => {
+    const canvas = { pages: [{ id: 'p', name: 'TCK-1' }], designSystems: [{ namespace: 'acme', version: '3' }], boards: { 'A.dc.html': { page: 'main' }, 'B.dc.html': { page: 'main' }, 'Proto.dc.html': { page: 'p' } } }
+    expect(countCanvasFiles(canvas, 'tokens.json', ['canvas.json', 'tokens.json', 'A.dc.html', 'ds/acme/button.js', 'ds/acme/tokens.json', 'logo.png'])).toEqual({ files: 8, boards: 3, unread: [] })
+    expect(countCanvasFiles(canvas, 'tokens.json', ['canvas.json', 'tokens.json'])).toEqual({ files: 5, boards: 3, unread: ['acme'] })
+    expect(countCanvasFiles({ boards: {} }, 'tokens.json', ['canvas.json', 'tokens.json', 'Stray.dc.html', 'Other.dc.html'])).toEqual({ files: 4, boards: 0, unread: [] })
   })
 
   it('reads an old record holding only the link, and leaves out a field of the wrong type', () => {

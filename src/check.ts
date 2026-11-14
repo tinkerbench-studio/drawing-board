@@ -143,18 +143,24 @@ export const storyIndexProblems = (committed: string | undefined, map: BoardMap)
 
 /**
  * The line about a canvas's files against its limit: how many are in use and how many are free, and whether that
- * is a warning (fewer than `headroom` free, or none). With `exact` false the count is a lower bound (the boards' meta
- * files plus canvas.json and the tokens), so the free files are at most what it says.
+ * is a warning (fewer than `headroom` free, or none). With `bound`, the count is a lower bound and `bound` says why
+ * (the meta files counted in place of a recorded count, say), so the free files are at most what it says.
  */
-export const filesInUse = (input: { used: number; exact: boolean; limits: Limits; version?: string }): { line: string; warning: boolean } => {
-  const { used, exact, limits } = input
+export const filesInUse = (input: { used: number; limits: Limits; version?: string; bound?: string }): { line: string; warning: boolean } => {
+  const { used, limits, bound } = input
   const free = Math.max(0, limits.files - used)
   const at = input.version === undefined ? '' : ` (canvas version ${input.version})`
-  const count = exact ? `${used} of ${limits.files} in use, ${free} free${at}.` : `at least ${used} of ${limits.files} in use, at most ${free} free${at}: artifact.json records no file count, so this is the meta files plus 2, and a refresh records the exact count.`
+  const count = bound === undefined ? `${used} of ${limits.files} in use, ${free} free${at}.` : `at least ${used} of ${limits.files} in use, at most ${free} free${at}: ${bound}.`
   const warning = free === 0 || free < limits.headroom
   const advice = free === 0 ? ' The canvas is full: a publish that adds a file is refused. Delete only deprecated designs, or move boards to another canvas.' : warning ? ` Fewer than ${limits.headroom} are free: a design adds about four files (dark, light and a 390 px view of each), so check before you publish.` : ''
   return { line: `Canvas files: ${count}${advice}`, warning }
 }
+
+/** Why a count from the meta files is a lower bound: there is no record yet, or the record has no count. */
+export const metaCountBound = (hasRecord: boolean): string => `${hasRecord ? `${ARTIFACT_RECORD} records no file count` : `there is no ${ARTIFACT_RECORD} yet`}, so this is the meta files plus 2, and a refresh records the count`
+
+/** Why a count from a read is a lower bound: the read holds no files of these installed design systems. */
+export const unreadBound = (namespaces: readonly string[]): string => `the folder holds no files of the design system${namespaces.length === 1 ? '' : 's'} ${namespaces.join(', ')} under project/ds/, so they were not read and not counted`
 
 /** The snapshot's record must be of the canvas the config names: its id and its link, where both are known. */
 export const recordProblems = (record: ArtifactRecord, canvas: { id: string; artifact: string | null }): string[] => {
@@ -190,9 +196,9 @@ export const pageProblems = (boards: readonly Board[], pages: Pages): string[] =
     return []
   })
 
-/** A map entry's `tags`, where it has them, is a list of non-empty strings. */
-export const tagProblems = (map: BoardMap): string[] =>
-  Object.entries(map).flatMap(([file, entry]) => (entry.tags === undefined || (Array.isArray(entry.tags) && entry.tags.every(t => typeof t === 'string' && t.trim() !== '')) ? [] : [`${file}: "tags" in ${mapPath(file)} must be a list of non-empty strings, such as ["merge queue"].`]))
+/** A map entry's `tags`, where it has them, is a list of non-empty strings. Warnings, not failures: a map entry may hold a project's own fields, so a `tags` it already had must not fail its check. */
+export const tagWarnings = (map: BoardMap): string[] =>
+  Object.entries(map).flatMap(([file, entry]) => (entry.tags === undefined || (Array.isArray(entry.tags) && entry.tags.every(t => typeof t === 'string' && t.trim() !== '')) ? [] : [`${file}: "tags" in ${mapPath(file)} is not a list of non-empty strings, such as ["merge queue"], so find does not read it.`]))
 
 /** A board's name is unique across every snapshot: a board file with a meta file in two snapshots, naming both canvases. */
 export const duplicateBoardProblems = (metaFilesByCanvas: Record<string, readonly string[]>): string[] => {

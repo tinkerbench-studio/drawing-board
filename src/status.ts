@@ -2,10 +2,10 @@
 // refresh, so the person refreshing sees what changed. It never writes; cli.ts reads the files. Pure.
 import { join } from 'node:path'
 
-import { filesInUse } from './check.ts'
+import { filesInUse, unreadBound } from './check.ts'
 import type { Limits } from './config.ts'
 import { SnapshotError } from './sample.ts'
-import { boardsOf, copyHash, designSystemsOf, unrecordedBoards, type ArtifactRecord, type BoardMeta } from './snapshot.ts'
+import { boardsOf, copyHash, countCanvasFiles, designSystemsOf, unrecordedBoards, type ArtifactRecord, type BoardMeta } from './snapshot.ts'
 
 /** What differs between a canvas read and its snapshot, and the report `status` prints. */
 export type CanvasStatus = {
@@ -19,7 +19,7 @@ export type CanvasStatus = {
   changed: string[]
   /** Boards with a copy that the folder does not hold, so they were not compared. */
   unread: string[]
-  /** The exact file count against the limit. */
+  /** The files the canvas holds against the limit: every board canvas.json lists, canvas.json, the tokens and the other files read; a lower bound when an installed design system's files were not read. */
   files: { line: string; warning: boolean }
   /** Design systems installed on the canvas against the record and against the project's `designSystems`. */
   designSystems: string[]
@@ -30,10 +30,11 @@ export type CanvasStatus = {
 const shown = (value: string | null | undefined) => value ?? 'none'
 
 /**
- * The canvas read (`read` gives the text of a path under `<from>/project`, undefined when it is missing; `files` is
- * the count of files under it) against the snapshot's meta files and record. Refuses a folder with no canvas.json.
+ * The canvas read (`read` gives the text of a path under `<from>/project`, undefined when it is missing; `paths` are
+ * the files under it, and `tokens` the tokens file's path there) against the snapshot's meta files and record.
+ * Refuses a folder with no canvas.json.
  */
-export const canvasStatus = (input: { from: string; read: (path: string) => string | undefined; files: number; metas: readonly BoardMeta[]; prototype: RegExp; limits: Limits; record: ArtifactRecord; expected?: Record<string, string> }): CanvasStatus => {
+export const canvasStatus = (input: { from: string; read: (path: string) => string | undefined; paths: readonly string[]; tokens: string; metas: readonly BoardMeta[]; prototype: RegExp; limits: Limits; record: ArtifactRecord; expected?: Record<string, string> }): CanvasStatus => {
   const canvasText = input.read('canvas.json')
   if (canvasText === undefined) throw new SnapshotError(`${join(input.from, 'project', 'canvas.json')} was not found: read the canvas into ${input.from} first.`)
   let canvas: unknown
@@ -47,7 +48,7 @@ export const canvasStatus = (input: { from: string; read: (path: string) => stri
   const metas = new Map(input.metas.map(m => [m.file, m]))
   const added = unrecordedBoards([...onCanvas.keys()], [...metas.keys()])
   const removed = [...metas.keys()].filter(file => !onCanvas.has(file)).sort()
-  const moved = boards.flatMap(b => (metas.has(b.file) && metas.get(b.file)!.page !== b.page ? [{ file: b.file, snapshot: metas.get(b.file)!.page, canvas: b.page }] : []))
+  const moved = boards.flatMap(b => (metas.has(b.file) && metas.get(b.file)!.page !== b.page ? [{ file: b.file, snapshot: metas.get(b.file)!.page, canvas: b.page }] : [])).sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
   const copied = input.metas.filter(m => m.copy !== undefined && onCanvas.has(m.file))
   const unread = copied.filter(m => input.read(m.file) === undefined).map(m => m.file)
   const changed = copied.filter(m => input.read(m.file) !== undefined && copyHash(input.read(m.file)!) !== m.copy!.hash).map(m => m.file)
@@ -65,6 +66,7 @@ export const canvasStatus = (input: { from: string; read: (path: string) => stri
     ...(unread.length > 0 ? [`Not in the folder, so not compared: ${unread.join(', ')}.`] : []),
     ...designSystems,
   ]
-  const files = filesInUse({ used: input.files, exact: true, limits: input.limits })
+  const count = countCanvasFiles(canvas, input.tokens, input.paths)
+  const files = filesInUse({ used: count.files, limits: input.limits, ...(count.unread.length === 0 ? {} : { bound: unreadBound(count.unread) }) })
   return { added, removed, moved, changed, unread, files, designSystems, lines: lines.length > 0 ? lines : ['The snapshot is in step with the canvas read.'] }
 }

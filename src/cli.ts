@@ -4,13 +4,14 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { CONFIG_FILE, LEGACY_CONFIG_FILE, loadConfig, snapshotConfigs, type Config } from './config.ts'
+import { canvasOption, CONFIG_FILE, LEGACY_CONFIG_FILE, loadConfig, snapshotConfigs, type Config } from './config.ts'
 import { findBoards } from './find.ts'
 import { compareOptions, storyShotOptions } from './pictures.ts'
 import { loadHooks } from './hooks.ts'
-import { boardNameProblems, canvasFileCount, canvasFiles, checkProblems, checkWarnings, project, storyTitles } from './project.ts'
+import { boardNameProblems, canvasFiles, checkProblems, checkWarnings, project, readFiles, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
-import { ARTIFACT_RECORD, boardsOf, buildSnapshot, designSystemsOf, metaPath, notCopiedNotes, recordText, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
+import { unreadBound } from './check.ts'
+import { ARTIFACT_RECORD, boardsOf, buildSnapshot, countCanvasFiles, designSystemsOf, metaPath, notCopiedNotes, recordText, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
 import { canvasStatus } from './status.ts'
 
 const flag = (argv: readonly string[], name: string) => {
@@ -36,7 +37,8 @@ const snapshot = (config: Config, argv: readonly string[]) => {
   const before = new Map(p.metas().map(m => [m.file, m]))
   const snap = buildSnapshot({ canvas, tokensText, version, map, read, previous: f => before.get(f), only, tokens, existing: [...before.values()], prototype: config.prototypePages })
   const onCanvas = boardsOf(canvas, config.prototypePages).map(b => b.file)
-  const record = recordText({ canvas: config.canvas.id, artifact: config.artifact, version, full: only === undefined, previous: p.record(), files: canvasFileCount(from), boards: onCanvas, designSystems: designSystemsOf(canvas) })
+  const count = countCanvasFiles(canvas, config.tokens, readFiles(from))
+  const record = recordText({ canvas: config.canvas.id, artifact: config.artifact, version, full: only === undefined, previous: p.record(), files: count, boards: onCanvas, designSystems: designSystemsOf(canvas) })
   const runtime = join(from, 'artifact-type/dc-runtime.js')
   if (only === undefined && !existsSync(runtime)) throw new SnapshotError(`${runtime} was not read: boards render offline only with the canvas runtime.`)
   // The snapshot is only touched once everything above has been read, so a refusal there leaves the old one.
@@ -57,6 +59,7 @@ const snapshot = (config: Config, argv: readonly string[]) => {
     const missing = unrecordedBoards(onCanvas, snap.metas.map(m => m.file), only)
     if (missing.length > 0) console.log(`On the canvas but not in the snapshot, and not named: ${missing.join(', ')}. A full refresh adds them.`)
   } else console.log(`Snapshot of ${config.artifact} version ${version}: ${snap.boards.boards.length} boards, ${screensOf(map).length} copied, ${moved} of them changed (and now at ${version}).`)
+  if (count.unread.length > 0) console.log(`The canvas holds at least ${count.files} files: ${unreadBound(count.unread)}. Read them too for the full count.`)
 }
 
 /** The configs a command reads: the canvas named with --canvas, else every canvas that has a snapshot. */
@@ -89,20 +92,23 @@ const status = (config: Config, argv: readonly string[]) => {
   const from = flag(argv, 'from')
   if (from === undefined || from.startsWith('--')) throw new SnapshotError('Usage: drawing-board status --from <folder read from the canvas> [--canvas <id>]')
   const p = project(config)
-  const found = canvasStatus({ from, read: reader(from), files: canvasFileCount(from), metas: p.metas(), prototype: config.prototypePages, limits: config.limits, record: p.record(), ...(config.designSystems === undefined ? {} : { expected: config.designSystems }) })
+  const found = canvasStatus({ from, read: reader(from), paths: readFiles(from), tokens: config.tokens, metas: p.metas(), prototype: config.prototypePages, limits: config.limits, record: p.record(), ...(config.designSystems === undefined ? {} : { expected: config.designSystems }) })
   console.log([`The canvas "${config.canvas.id}" read in ${from}, against its snapshot:`, ...found.lines.map(line => `- ${line}`)].join('\n'))
   if (found.files.warning) console.warn(`warning: ${found.files.line}`)
   else console.log(found.files.line)
 }
 
-/** The words of `find`: its arguments, leaving out each flag and its value. */
-const words = (argv: readonly string[]) => argv.filter((arg, at) => !arg.startsWith('--') && !(argv[at - 1] ?? '').startsWith('--'))
+/** The flags of `find` that take a value. */
+const VALUE_FLAGS = new Set(['--canvas', '--config'])
+
+/** The words of `find`: its arguments, leaving out each flag and the value of one that takes a value. */
+const words = (argv: readonly string[]) => argv.filter((arg, at) => !arg.startsWith('--') && !VALUE_FLAGS.has(argv[at - 1] ?? ''))
 
 /** The boards of every snapshot (or the canvas named) that match the words, best first. */
 const find = (argv: readonly string[]) => {
   const query = words(argv)
   if (query.length === 0) throw new SnapshotError('Usage: drawing-board find <words…> [--canvas <id>]')
-  const canvases = chosenConfigs(flag(argv, 'config'), flag(argv, 'canvas')).map(config => {
+  const canvases = chosenConfigs(flag(argv, 'config'), canvasOption(argv)).map(config => {
     const p = project(config)
     const pages = p.pages()
     return { id: config.canvas.id, metas: p.metas(), map: p.map(), ...(pages === undefined ? {} : { pages }) }
@@ -159,7 +165,7 @@ const BROWSER_COMMANDS = new Set(['story-shot', 'compare-pictures', 'annotate', 
 
 const main = async (argv: readonly string[]) => {
   const [command = '', ...rest] = argv
-  const config = () => loadConfig(flag(argv, 'config'), flag(argv, 'canvas'))
+  const config = () => loadConfig(flag(argv, 'config'), canvasOption(argv))
   if (BROWSER_COMMANDS.has(command)) {
     try {
       return await browserCommand(command, rest, config)
@@ -170,7 +176,7 @@ const main = async (argv: readonly string[]) => {
     }
   }
   if (command === 'snapshot') return snapshot(config(), argv)
-  if (command === 'check') return await check(flag(argv, 'config'), flag(argv, 'canvas'))
+  if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv))
   if (command === 'status') return status(config(), argv)
   if (command === 'find') return find(rest)
   if (command === 'index') return storyIndex(config())
