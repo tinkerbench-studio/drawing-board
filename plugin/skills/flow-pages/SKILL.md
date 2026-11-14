@@ -52,14 +52,17 @@ What is not a flow goes on its own page:
 ## Moving boards between pages
 
 Moving a board changes only its page, not its content. Do a reorganisation as one publish of the
-canvas's page index, then a refresh (`canvas-sync`). Moving a board to another canvas (to
-`reference`, say) keeps its design as it is: copy it there, remove it from the first canvas, and
-refresh both snapshots in the same change. A board's name stays unique across canvases.
-
-Never delete a board to tidy a page or to make room on a canvas. Delete it only when its design is
-deprecated. Where the project still keeps all boards in one
+canvas's page index, then a refresh (`canvas-sync`). Where the project still keeps all boards in one
 snapshot file, do the reorganisation in the same change that splits the snapshot per board, so the
 big rewrite happens once.
+
+Moving a board to another canvas (to `reference`, say) keeps its design as it is: copy it there,
+remove it from the first canvas, and refresh both snapshots in the same change. A board's name stays
+unique across canvases.
+
+The canvas stays the source of truth after a design is built, so a built screen's board stays on its
+page; it is not removed because the code now exists. Never delete a board to tidy a page or to make
+room on a canvas. Delete it only when its design is deprecated.
 
 ## Adding a board
 

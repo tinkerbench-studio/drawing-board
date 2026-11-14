@@ -64,10 +64,10 @@ with no settings at all. A project that differs says only how, in a `drawing-boa
 | Command | What it does |
 | --- | --- |
 | `drawing-board snapshot --from <folder> --version <version> [--boards A.dc.html,B.dc.html [--tokens]]` | Writes the snapshot from a folder read from the canvas (`project/canvas.json`, the tokens, each mapped board, `artifact-type/dc-runtime.js`), and its record, `artifact.json` (below). With `--boards`, rewrites only those boards and leaves every other board's files byte for byte; it then names the boards on the canvas that have no meta file and were not named, which a full refresh adds. Refuses, writing nothing, a board it cannot find |
-| `drawing-board check` | Every board is mapped; every story it names exists; every mapped board's copy was read by a refresh (its hash matches, whatever the line endings); the story index, samples and components match the copies; the tokens board shows every token; `artifact.json` is the record of this canvas; every board is on a page `pages.json` lists, with its prefix; `tags` are lists of words; no board name is in two snapshots; the optional checks the project turned on (`checks`, below). Then the project's own checks (`checks()`, below). Exits 1 with each problem named. Then the canvas files and the warnings (below), which never change the exit code. With several canvases it checks each one that has a snapshot, its id before each line |
+| `drawing-board check` | Every board is mapped; every story it names exists; every mapped board's copy was read by a refresh (its hash matches, whatever the line endings); the story index, samples and components match the copies; the tokens board shows every token; `artifact.json` is the record of this canvas; every board is on a page `pages.json` lists, with its prefix; no board name is in two snapshots; the optional checks the project turned on (`checks`, below). Then the project's own checks (`checks()`, below). Exits 1 with each problem named. Then the canvas files and the warnings (below), which never change the exit code. With several canvases it checks each one that has a snapshot, its id before each line |
 | `drawing-board index` | Rewrites `story-index.json` from the map files, no canvas needed |
 | `drawing-board report` | Boards with no story, and stories no board points at |
-| `drawing-board status --from <folder>` | A folder read from the canvas against the snapshot, before a refresh: boards on the canvas with no meta file, meta files of boards no longer there, boards on another page, copies changed on the canvas, the exact file count, and the design systems installed against the record and the `designSystems` setting. Writes nothing; exits 0. Refuses a folder with no `project/canvas.json` |
+| `drawing-board status --from <folder>` | A folder read from the canvas against the snapshot, before a refresh: boards on the canvas with no meta file, meta files of boards no longer there, boards on another page, copies changed on the canvas, the files the canvas holds (counted as below), and the design systems installed against the record and the `designSystems` setting. Writes nothing; exits 0. Refuses a folder with no `project/canvas.json` |
 | `drawing-board find <words…>` | The boards whose name (its CamelCase words too), title, page, page flow and keywords (`pages.json`), story, tags, reason for no story, components or sample keys hold any of the words, whatever the case. Most words matched first, then by canvas and file: the canvas, page, board and story. Searches every snapshot |
 
 `snapshot`, `check`, `index`, `report`, `status` and `find` take `--canvas <id>` to work on one canvas
@@ -105,7 +105,7 @@ Each board has, under `<snapshot>/boards/`:
   copies a board's markup only when a story shows it, so a `none` board has nothing to compare with.
   `check` warns (without failing) when a `none` board is named by a story or its note says it is
   built, and fails when a mapped board has no copy; `snapshot --boards` says when a named board is
-  `none` and so was not copied. `check` refuses `tags` that is not a list of non-empty strings.
+  `none` and so was not copied. `check` also warns when `tags` is not a list of non-empty strings.
 - `<Board>.dc.html`, the copy, for a board a story shows.
 
 Beside `boards/`, the snapshot has:
@@ -125,6 +125,7 @@ Every refresh writes the snapshot's record of the canvas it read, in this order:
   "version": "52",
   "fullVersion": "48",
   "files": 311,
+  "canvasBoards": 240,
   "boards": ["Account.dc.html", "Home.dc.html"],
   "designSystems": { "acme": "3" }
 }
@@ -133,7 +134,8 @@ Every refresh writes the snapshot's record of the canvas it read, in this order:
 - `canvas` is the canvas's id in the config, and `artifact` its link.
 - `version` is the version read. `fullVersion` is the version of the last full refresh; a partial one
   keeps it, and it is left out until there has been one.
-- `files` is how many files the canvas holds (every file under `project/`).
+- `files` is how many files the canvas holds, counted as in "The canvas's 512 files" below.
+  `canvasBoards` is how many of them are boards, on every page.
 - `boards` lists the boards on the canvas, outside prototype pages, sorted.
 - `designSystems` is each design system installed on the canvas (`designSystems` in `canvas.json`),
   namespace to version.
@@ -167,15 +169,24 @@ A Design canvas holds at most 512 files of its own: every board, `canvas.json`, 
 installed design system's files (`project/ds/`). A publish over that is refused. A design adds about four
 files: dark, light and a 390 px view of each.
 
+A refresh counts them from what it read. A read holds only `canvas.json`, the tokens and the boards
+a story shows, so the count does not rest on the folder alone: it is every board `canvas.json` lists,
+on every page (prototype pages too), plus `canvas.json` and the tokens file, plus every other file the
+folder holds (`project/ds/**`, assets); or the folder's own file count, when that is larger. When the
+folder holds no files under `project/ds/<namespace>/` for a design system `canvas.json` lists, the
+refresh and `status` say those files were not read, and that the canvas holds at least that many. A
+partial refresh never lowers the recorded count while `canvas.json` lists as many boards as before,
+since a read for a few boards often leaves out files a full read held.
+
 `check` says how many are in use, from the record's `files`:
 
 ```
 Canvas files: 311 of 512 in use, 201 free (canvas version 52).
 ```
 
-When the record has no `files` yet, it counts the meta files plus 2, says that is a lower bound
-("at most … free"), and that a refresh records the exact count. For the exact count between refreshes,
-run `status --from` on a fresh read.
+When there is no `artifact.json` yet, or it has no `files`, `check` counts the meta files plus 2, says
+that is a lower bound ("at most … free"), and that a refresh records the count. For the count between
+refreshes, run `status --from` on a fresh read.
 
 The line is information while there is room. It becomes a **warning** when fewer than `headroom` files
 are free (16 by default) or the canvas is full. Warnings are their own channel: printed after the
@@ -185,7 +196,9 @@ code. `check` also warns about:
 - boards `artifact.json` lists that have no meta file (a partial refresh does not add them; a full one
   does);
 - each design system in the `designSystems` setting whose recorded version is missing or different
-  ("installed 2, expected 3: install it again on the canvas, then refresh").
+  ("installed 2, expected 3: install it again on the canvas, then refresh");
+- a map entry's `tags` that is not a list of non-empty strings (`find` then leaves it out). A map
+  entry may hold a project's own fields, so this never fails an existing project's check.
 
 `checkWarnings(config)` returns them, beside `checkProblems(config)`; `filesInUse` builds the line.
 
@@ -216,6 +229,9 @@ by role:
 - With `canvases`, the top-level `artifact` and `snapshot` are refused: they belong to a canvas.
   Without it, the file is one canvas, `{ "id": "main", "role": "main" }`, from the top-level fields.
 - `--canvas <id>` picks the canvas; the main one by default. An unknown id is refused, naming the ids.
+  So are `--canvas` with no id and the `--canvas=<id>` form, rather than falling back to main.
+- The tokens are the main canvas's: `tokensBoard`, `checks.tokenThemes` and `checks.tokensCss` hold
+  only the main canvas to them.
 - A board's name is unique across the snapshots: `check` fails a board with a meta file in two of them.
 - Hooks are loaded with the main canvas's config, and `checks()` runs once.
 - Components are shared through a design system, installed on each canvas. The canvas records it in

@@ -45,7 +45,7 @@ pinned script, the commands below are
 | Refresh the boards you changed | `npx drawing-board snapshot --from <folder> --version <version> --boards A.dc.html,B.dc.html` | `--tokens` when the tokens changed; `--canvas <id>` for a canvas other than main |
 | Full refresh | `npx drawing-board snapshot --from <folder> --version <version>` | Catching up, or resolving a conflict |
 | Check | `npx drawing-board check` | The package's checks on every snapshot and the project's `checks()`, then the files in use and any warnings. Also run by CI as: `<job>` |
-| What changed on the canvas | `npx drawing-board status --from <folder>` | Before a refresh; writes nothing. Gives the exact file count |
+| What changed on the canvas | `npx drawing-board status --from <folder>` | Before a refresh; writes nothing. Gives the files the canvas holds now |
 | Find a board | `npx drawing-board find <words…>` | By name, page, flow, keywords, story and tags |
 | Rebuild the story index | `npx drawing-board index` | After editing a map file's `story`, or merging one |
 | Boards with no story, stories with no board | `npx drawing-board report` | |

@@ -15,10 +15,12 @@ first for the project's canvases, pages and ticket key.
 A canvas holds at most 512 files of its own, and a publish over that is refused with a 422. A design
 adds about four files: dark, light and a 390 px view of each. Before you publish a prototype, and
 again before you fold one in, check that the canvas you publish to has enough free files: run
-`drawing-board status --from <folder>` on a fresh read for the exact count (`drawing-board check`
+`drawing-board status --from <folder>` on a fresh read for the current count (`drawing-board check`
 gives the count at the last refresh). When it has too few, stop: set the ticket to need a person,
 say how many files are free and how many the design needs, and do not publish. Never delete another
-board to make room; a board is deleted only when its design is deprecated.
+board to make room; a board is deleted only when its design is deprecated. The canvas stays the
+source of truth after a design is built: a board that is built stays on the canvas, and later
+changes to it start there.
 
 ## The flow
 

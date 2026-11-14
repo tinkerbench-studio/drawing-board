@@ -43,10 +43,11 @@ with no refresh after it is unfinished work, whatever the ticket.
 
 - **See what changed first.** Read the canvas into a folder and run `drawing-board status --from
   <folder>` (it writes nothing). It lists boards added, removed or moved, copies changed on the
-  canvas, the design systems installed, and the exact files in use.
+  canvas, the design systems installed, and the files the canvas holds.
 - **Check the free files before you publish.** A canvas holds at most 512 files of its own, and a
-  publish over that is refused (422). `status --from` gives the exact count; `check` gives the count
-  the last refresh recorded. Fewer free than your change adds: stop and tell the owner. Do not delete
+  publish over that is refused (422). `status --from` gives the current count; `check` gives the count
+  the last refresh recorded. Fewer free than your change adds: stop, set the ticket to need a person,
+  say how many files are free and how many the change needs, and do not publish. Do not delete
   boards to make room.
 - **Read before you publish.** Read each board you will change from the canvas, not from your
   checkout, in the same session. Publish only the boards you changed. Never republish a board you
@@ -116,7 +117,8 @@ with no refresh after it is unfinished work, whatever the ticket.
 - **A canvas holds 512 files.** Every board, `canvas.json`, the tokens and an installed design
   system's files count. `check` warns when few are free; a warning does not fail it, but read it.
 - **`check` warnings are not problems.** Lines starting `warning: ` never fail the check: missing
-  boards a full refresh adds, a design system at another version, few free files. Act on them in
+  boards a full refresh adds, a design system at another version, few free files, a `none` board
+  that looks built, `tags` of the wrong shape. Act on them in
   the change that caused them.
 - **`data-sample` goes on a leaf element**, written out, never on a `{{hole}}`.
 - **Fonts and images from the canvas (`/_blob/…`) do not load offline**, so a board rendered in CI
