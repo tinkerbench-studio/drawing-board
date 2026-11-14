@@ -1,6 +1,6 @@
 // The CLI end to end, on a throwaway project: a full refresh, a partial one, the check and the index.
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -146,5 +146,199 @@ describe('the picture commands', () => {
     expect(layout.status).toBe(1)
     expect(layout.stderr).toMatch(/--board names a board file/)
     expect(run(bare, ['layout', '--width', '5']).stderr).toMatch(/--width is a number, 200 or more/)
+  })
+})
+
+describe('the record, artifact.json', () => {
+  const record = (dir: string, folder = 'canvas') => JSON.parse(readFileSync(join(dir, folder, 'artifact.json'), 'utf8'))
+
+  it('is written by a full refresh with the canvas, versions, file count, boards and design systems', () => {
+    const { dir, from } = fixture()
+    write(from, 'project/canvas.json', JSON.stringify({ ...JSON.parse(canvas(1)), designSystems: [{ title: 'Acme', namespace: 'acme', version: '3', artifact: 'a', copiedAt: 't' }, { title: 'broken' }] }))
+    write(from, 'project/ds/acme/button.js', '//')
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    expect(readFileSync(join(dir, 'canvas/artifact.json'), 'utf8')).toBe(JSON.stringify({ canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v1', fullVersion: 'v1', files: 5, boards: ['A.dc.html', 'B.dc.html', 'C.dc.html'], designSystems: { acme: '3' } }, null, 2) + '\n')
+  })
+
+  it('keeps the full version on a partial refresh, and names the boards it did not add, never a prototype', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(from, 'project/canvas.json', JSON.stringify({ ...JSON.parse(canvas(1)), boards: { ...JSON.parse(canvas(1)).boards, 'D.dc.html': { w: 1, h: 1, page: 'main' }, 'E.dc.html': { w: 1, h: 1, page: 'main' } } }))
+    const partial = run(dir, ['snapshot', '--from', from, '--version', 'v2', '--boards', 'A.dc.html,E.dc.html'])
+    expect(partial.stdout).toContain('On the canvas but not in the snapshot, and not named: D.dc.html. A full refresh adds them.')
+    expect(partial.stdout).not.toContain('Proto.dc.html')
+    expect(record(dir)).toMatchObject({ version: 'v2', fullVersion: 'v1', boards: ['A.dc.html', 'B.dc.html', 'C.dc.html', 'D.dc.html', 'E.dc.html'] })
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(1)
+    expect(check.stderr).toContain('warning: D.dc.html is on the canvas (artifact.json) but has no meta file: a full refresh adds it.')
+  })
+
+  it('leaves out the full version after a partial refresh of an old record, and an old record still checks', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(dir, 'canvas/artifact.json', '{"artifact":"https://claude.ai/artifact/x"}')
+    const old = run(dir, ['check'])
+    expect(old.status).toBe(0)
+    expect(old.stdout).toContain('Canvas files: at least 5 of 512 in use, at most 507 free: artifact.json records no file count')
+    run(dir, ['snapshot', '--from', from, '--version', 'v2', '--boards', 'A.dc.html'])
+    expect(record(dir).fullVersion).toBeUndefined()
+    expect(record(dir).version).toBe('v2')
+  })
+
+  it('fails the check when the record is of another canvas or link', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(dir, 'canvas/artifact.json', JSON.stringify({ ...record(dir), canvas: 'reference', artifact: 'https://claude.ai/artifact/other' }))
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(1)
+    expect(check.stderr).toContain('artifact.json is the record of the canvas "reference", but this snapshot is the canvas "main"')
+    expect(check.stderr).toContain('artifact.json records the canvas https://claude.ai/artifact/other, but the config names https://claude.ai/artifact/x')
+  })
+})
+
+describe('the warnings', () => {
+  const refreshed = (settings: object = {}) => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(dir, 'drawing-board.config.json', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas', ...settings }))
+    return { dir, from }
+  }
+
+  it('say the files in use as information when there is room', () => {
+    const check = run(refreshed().dir, ['check'])
+    expect(check.stdout).toBe('The design canvas snapshot is in step.\nCanvas files: 4 of 512 in use, 508 free (canvas version v1).\n')
+    expect(check.stderr).toBe('')
+  })
+
+  it('warn when few files are free, or none, after the in-step line, and never fail the check', () => {
+    const low = run(refreshed({ limits: { files: 10, headroom: 8 } }).dir, ['check'])
+    expect(low.status).toBe(0)
+    expect(low.stdout).toBe('The design canvas snapshot is in step.\n')
+    expect(low.stderr).toMatch(/^warning: Canvas files: 4 of 10 in use, 6 free \(canvas version v1\)\. Fewer than 8 are free/)
+    const full = run(refreshed({ limits: { files: 4 } }).dir, ['check'])
+    expect(full.status).toBe(0)
+    expect(full.stderr).toMatch(/^warning: Canvas files: 4 of 4 in use, 0 free \(canvas version v1\)\. The canvas is full/)
+  })
+
+  it('warn about a lower bound that leaves few free', () => {
+    const { dir } = refreshed({ limits: { files: 20 } })
+    write(dir, 'canvas/artifact.json', '{"artifact":"https://claude.ai/artifact/x"}')
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(0)
+    expect(check.stderr).toContain('warning: Canvas files: at least 5 of 20 in use, at most 15 free: artifact.json records no file count')
+  })
+
+  it('warn about a design system at another version than the setting, after the problems', () => {
+    const { dir } = refreshed({ designSystems: { acme: '4' } })
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(0)
+    expect(check.stderr).toBe('warning: design system "acme": not recorded as installed on the canvas, expected 4: install it on the canvas, then refresh.\n')
+    write(dir, 'canvas/boards/A.dc.html', board('edited'))
+    write(dir, 'canvas/artifact.json', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', files: 4, designSystems: { acme: '3' } }))
+    const failing = run(dir, ['check'])
+    expect(failing.status).toBe(1)
+    expect(failing.stderr).toMatch(/edited by hand[\s\S]*\nwarning: design system "acme": installed 3, expected 4: install it again on the canvas, then refresh\.\n$/)
+  })
+})
+
+describe('pages.json and tags', () => {
+  it('fail the check for a board on an unlisted page, one without its prefix and tags of the wrong shape', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(dir, 'canvas/pages.json', JSON.stringify({ main: { flow: 'Everything', prefixes: ['A', 'B'] } }))
+    write(dir, 'canvas/boards/A.map.json', JSON.stringify({ story: 'L/A', tags: 'one' }))
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(1)
+    expect(check.stderr).toContain('C.dc.html is on the page "main" but starts with none of its prefixes (A, B)')
+    expect(check.stderr).toContain('A.dc.html: "tags" in boards/A.map.json must be a list of non-empty strings')
+    write(dir, 'canvas/pages.json', JSON.stringify({ other: { flow: 'Else' } }))
+    expect(run(dir, ['check']).stderr).toContain('B.dc.html is on the page "main", which pages.json does not list')
+    write(dir, 'canvas/pages.json', JSON.stringify({ main: { prefixes: ['A'] } }))
+    expect(run(dir, ['check']).stderr).toContain('pages.json: the page "main" has no "flow"')
+  })
+})
+
+describe('several canvases', () => {
+  /** The fixture with a reference canvas (one board, Arch) and a prototypes canvas, and a read of the reference canvas. */
+  const canvases = () => {
+    const { dir, from } = fixture()
+    const ref = mkdtempSync(join(tmpdir(), 'drawing-board-reference-'))
+    write(dir, 'drawing-board.config.json', JSON.stringify({ canvases: [{ id: 'main', role: 'main', artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas' }, { id: 'reference', role: 'reference', artifact: 'https://claude.ai/artifact/r', snapshot: 'reference' }, { id: 'protos', role: 'prototypes', artifact: 'https://claude.ai/artifact/p' }] }))
+    write(dir, 'reference/boards/ArchQueue.map.json', '{"none":"architecture","tags":["merge queue"]}')
+    write(ref, 'project/canvas.json', JSON.stringify({ boards: { 'ArchQueue.dc.html': { w: 1, h: 1, page: 'arch' } } }))
+    write(ref, 'project/tokens.json', '{}')
+    write(ref, 'artifact-type/dc-runtime.js', '// runtime')
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    run(dir, ['snapshot', '--from', ref, '--version', 'r1', '--canvas', 'reference'])
+    return { dir, from, ref }
+  }
+
+  it('refresh, index and check the canvas --canvas names, and check every snapshot by default', () => {
+    const { dir } = canvases()
+    expect(JSON.parse(readFileSync(join(dir, 'reference/artifact.json'), 'utf8'))).toMatchObject({ canvas: 'reference', artifact: 'https://claude.ai/artifact/r', version: 'r1', boards: ['ArchQueue.dc.html'] })
+    expect(readdirSync(join(dir, 'reference/boards')).sort()).toEqual(['ArchQueue.map.json', 'ArchQueue.meta.json', 'support.js'])
+    expect(run(dir, ['index', '--canvas', 'reference']).status).toBe(0)
+    const all = run(dir, ['check'])
+    expect(all.stderr).toBe('')
+    expect(all.stdout).toBe('The design canvas snapshot is in step.\n[main] Canvas files: 4 of 512 in use, 508 free (canvas version v1).\n[reference] Canvas files: 2 of 512 in use, 510 free (canvas version r1).\n')
+    expect(run(dir, ['check', '--canvas', 'reference']).stdout).toBe('The design canvas snapshot is in step.\nCanvas files: 2 of 512 in use, 510 free (canvas version r1).\n')
+  })
+
+  it('refuse a canvas that is not there, naming the ones that are, and one with no snapshot', () => {
+    const { dir } = canvases()
+    expect(run(dir, ['check', '--canvas', 'nope']).stderr).toContain('There is no canvas "nope": the canvases are main, reference, protos.')
+    expect(run(dir, ['report', '--canvas', 'protos']).stderr).toContain('The canvas "protos" (prototypes) has no snapshot')
+  })
+
+  it('prefix each problem with its canvas, and refuse a board name in two snapshots, naming both', () => {
+    const { dir } = canvases()
+    write(dir, 'reference/boards/A.meta.json', readFileSync(join(dir, 'canvas/boards/C.meta.json'), 'utf8').replace('C.dc.html', 'A.dc.html'))
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(1)
+    expect(check.stderr).toContain('- [reference] A.dc.html is on the canvas but has no map entry')
+    expect(check.stderr).toContain('- A.dc.html has a meta file in the snapshots of the canvases main and reference')
+  })
+
+  it('find boards on every canvas, or the one named, best first', () => {
+    const { dir } = canvases()
+    expect(run(dir, ['find', 'arch', 'queue']).stdout).toBe('reference  arch  ArchQueue.dc.html  no story\n')
+    expect(run(dir, ['find', 'a', 'arch']).stdout).toBe('reference  arch  ArchQueue.dc.html  no story\nmain  main  A.dc.html  L/A\nmain  main  B.dc.html  L/B\nmain  main  C.dc.html  no story\n')
+    expect(run(dir, ['find', 'arch', '--canvas', 'main']).stdout).toBe('No board matches "arch".\n')
+    expect(run(dir, ['find']).stderr).toMatch(/Usage: drawing-board find/)
+  })
+})
+
+describe('drawing-board status', () => {
+  const tree = (dir: string): Record<string, string> => Object.fromEntries((readdirSync(dir, { recursive: true, withFileTypes: true }) as Dirent[]).filter(e => e.isFile()).map(e => [join(e.parentPath, e.name), readFileSync(join(e.parentPath, e.name), 'utf8')]))
+
+  it('says what a refresh would change, and writes nothing', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(from, 'project/canvas.json', JSON.stringify({ pages: [{ id: 'main' }, { id: 'p', name: 'NOK-9' }], boards: { 'A.dc.html': { w: 1, h: 1, page: 'other' }, 'B.dc.html': { w: 1, h: 1, page: 'main' }, 'D.dc.html': { w: 1, h: 1, page: 'main' }, 'Proto.dc.html': { w: 1, h: 1, page: 'p' } } }))
+    write(from, 'project/B.dc.html', board('new'))
+    const before = tree(dir)
+    const status = run(dir, ['status', '--from', from])
+    expect(status.status).toBe(0)
+    expect(status.stdout).toBe(
+      [
+        `The canvas "main" read in ${from}, against its snapshot:`,
+        '- On the canvas with no meta file: D.dc.html. A full refresh adds them, or name them with --boards.',
+        '- In the snapshot but no longer on the canvas: C.dc.html. A full refresh removes them.',
+        '- A.dc.html is on the page other on the canvas, main in the snapshot.',
+        "- Changed on the canvas since the snapshot's copy: B.dc.html.",
+        'Canvas files: 4 of 512 in use, 508 free.',
+        '',
+      ].join('\n'),
+    )
+    expect(tree(dir)).toEqual(before)
+  })
+
+  it('refuses a folder with no canvas.json, naming the path, and needs --from', () => {
+    const { dir } = fixture()
+    const empty = mkdtempSync(join(tmpdir(), 'drawing-board-empty-'))
+    const status = run(dir, ['status', '--from', empty])
+    expect(status.status).toBe(1)
+    expect(status.stderr).toContain(`${join(empty, 'project', 'canvas.json')} was not found`)
+    expect(run(dir, ['status']).stderr).toMatch(/Usage: drawing-board status --from/)
   })
 })
