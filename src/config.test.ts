@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { CONFIG_FILE, DEFAULTS, findConfig, LEGACY_CONFIG_FILE, loadConfig, parseConfig } from './config.ts'
+import { CONFIG_FILE, DEFAULT_LIMITS, DEFAULTS, findConfig, LEGACY_CONFIG_FILE, loadConfig, parseConfig, snapshotConfigs } from './config.ts'
 import { TICKET_PAGE } from './snapshot.ts'
 
 const root = resolve('/project')
@@ -110,5 +110,125 @@ describe('findConfig', () => {
     expect(loadConfig(join(dir, CONFIG_FILE)).snapshot).toBe(join(dir, 'new'))
     writeFileSync(join(dir, LEGACY_CONFIG_FILE), '{"bad":1}')
     expect(() => loadConfig(join(dir, LEGACY_CONFIG_FILE))).toThrow(/^\.drawing-board: "bad"/)
+  })
+})
+
+describe('canvases', () => {
+  const link = (id: string) => `https://claude.ai/artifact/${id}`
+  const three = {
+    prototypePages: '^proto',
+    canvases: [
+      { id: 'main', role: 'main', artifact: link('m') },
+      { id: 'protos', role: 'prototypes', artifact: link('p') },
+      { id: 'reference', role: 'reference', artifact: link('r'), snapshot: 'design/reference', prototypePages: '^draft' },
+    ],
+  }
+
+  it('is one main canvas built from the top-level fields when the file has none', () => {
+    const config = parseConfig(JSON.stringify({ artifact: link('m'), snapshot: 'dc' }), root)
+    expect(config.canvas).toEqual({ id: 'main', role: 'main' })
+    expect(config.canvases).toEqual([{ id: 'main', role: 'main', artifact: link('m'), snapshot: resolve(root, 'dc'), prototypePages: TICKET_PAGE }])
+    expect(config.limits).toEqual(DEFAULT_LIMITS)
+    expect(config.designSystems).toBeUndefined()
+    expect(Object.keys(config)).not.toContain('canvases')
+  })
+
+  it('takes the main canvas by default, its snapshot by convention, and every canvas resolved', () => {
+    const config = parseConfig(JSON.stringify(three), root)
+    expect(config.canvas).toEqual({ id: 'main', role: 'main' })
+    expect(config.artifact).toBe(link('m'))
+    expect(config.snapshot).toBe(resolve(root, DEFAULTS.snapshot))
+    expect(config.prototypePages.test('proto one')).toBe(true)
+    expect(config.canvases.map(c => [c.id, c.snapshot])).toEqual([
+      ['main', resolve(root, DEFAULTS.snapshot)],
+      ['protos', undefined],
+      ['reference', resolve(root, 'design/reference')],
+    ])
+  })
+
+  it('picks a canvas by id, with its own link, snapshot, prototype pages and differences folder', () => {
+    const config = parseConfig(JSON.stringify(three), root, CONFIG_FILE, 'reference')
+    expect(config.canvas).toEqual({ id: 'reference', role: 'reference' })
+    expect(config.artifact).toBe(link('r'))
+    expect(config.snapshot).toBe(resolve(root, 'design/reference'))
+    expect(config.differences).toBe(resolve(root, 'design/reference/differences'))
+    expect(config.prototypePages.test('draft page')).toBe(true)
+    expect(config.prototypePages.test('proto page')).toBe(false)
+    expect(parseConfig(JSON.stringify({ ...three, differences: 'diffs' }), root, CONFIG_FILE, 'reference').differences).toBe(resolve(root, 'diffs'))
+  })
+
+  it('refuses an unknown canvas, naming the ones there are, and a canvas with no snapshot', () => {
+    expect(() => parseConfig(JSON.stringify(three), root, CONFIG_FILE, 'nope')).toThrow('There is no canvas "nope": the canvases are main, protos, reference.')
+    expect(() => parseConfig('', root, CONFIG_FILE, 'reference')).toThrow(/the canvases are main\./)
+    expect(() => parseConfig(JSON.stringify(three), root, CONFIG_FILE, 'protos')).toThrow(/"protos" \(prototypes\) has no snapshot/)
+    const bare = { canvases: [three.canvases[0], { id: 'ref', role: 'reference', artifact: link('r') }] }
+    expect(() => parseConfig(JSON.stringify(bare), root, CONFIG_FILE, 'ref')).toThrow(/"ref" \(reference\) has no snapshot: set its "snapshot"/)
+  })
+
+  it('gives a config for each canvas with a snapshot, main first', () => {
+    const configs = snapshotConfigs(parseConfig(JSON.stringify({ canvases: [three.canvases[2], three.canvases[1], three.canvases[0]] }), root))
+    expect(configs.map(c => [c.canvas.id, c.snapshot])).toEqual([
+      ['main', resolve(root, DEFAULTS.snapshot)],
+      ['reference', resolve(root, 'design/reference')],
+    ])
+    expect(snapshotConfigs(parseConfig('', root)).map(c => c.canvas.id)).toEqual(['main'])
+  })
+
+  it('loadConfig picks the canvas named, and reads each snapshot\'s recorded link when one is not set', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drawing-board-canvases-'))
+    mkdirSync(join(dir, 'ref'), { recursive: true })
+    writeFileSync(join(dir, 'ref/artifact.json'), JSON.stringify({ canvas: 'reference', artifact: link('recorded'), version: 'v3' }))
+    writeFileSync(join(dir, CONFIG_FILE), JSON.stringify({ canvases: [{ id: 'main', role: 'main', artifact: link('m') }, { id: 'reference', role: 'reference', artifact: link('r'), snapshot: 'ref' }] }))
+    expect(loadConfig(join(dir, CONFIG_FILE), 'reference').snapshot).toBe(join(dir, 'ref'))
+    expect(loadConfig(join(dir, CONFIG_FILE)).canvas.id).toBe('main')
+    writeFileSync(join(dir, CONFIG_FILE), JSON.stringify({ snapshot: 'ref' }))
+    expect(loadConfig(join(dir, CONFIG_FILE)).artifact).toBe(link('recorded'))
+  })
+
+  const main = { id: 'main', role: 'main', artifact: link('m') }
+  it.each([
+    [{ canvases: [main], artifact: link('m') }, /"artifact" goes on each canvas in "canvases"/],
+    [{ canvases: [main], snapshot: 'x' }, /"snapshot" goes on each canvas in "canvases"/],
+    [{ canvases: [] }, /"canvases" must be a list of canvases/],
+    [{ canvases: {} }, /"canvases" must be a list of canvases/],
+    [{ canvases: ['main'] }, /canvases\[0\] is not an object/],
+    [{ canvases: [{ ...main, id: 'Main' }] }, /canvases\[0\]: "id" must be a lowercase name/],
+    [{ canvases: [{ ...main, id: '1st' }] }, /"id" must be a lowercase name/],
+    [{ canvases: [main, { ...main, role: 'reference' }] }, /the canvas id "main" is used twice/],
+    [{ canvases: [{ ...main, role: 'archive' }] }, /"role" must be one of main, prototypes, reference/],
+    [{ canvases: [{ ...main, role: 'reference' }] }, /exactly one canvas with the role main \(it has 0\)/],
+    [{ canvases: [main, { ...main, id: 'two' }] }, /exactly one canvas with the role main \(it has 2\)/],
+    [{ canvases: [main, { id: 'p1', role: 'prototypes', artifact: link('1') }, { id: 'p2', role: 'prototypes', artifact: link('2') }] }, /at most one canvas with the role prototypes \(it has 2\)/],
+    [{ canvases: [main, { id: 'p', role: 'prototypes', artifact: link('p'), snapshot: 'p' }] }, /a prototypes canvas has no snapshot.*remove "snapshot"/],
+    [{ canvases: [{ ...main, artifact: undefined }] }, /\("main"\): "artifact" must be a non-empty string/],
+    [{ canvases: [{ ...main, snapshot: '' }] }, /\("main"\): "snapshot" must be a non-empty string/],
+    [{ canvases: [{ ...main, prototypePages: '(' }] }, /the canvas "main": "prototypePages" is not a regular expression/],
+    [{ canvases: [{ ...main, stories: ['x'] }] }, /"stories" is not a canvas setting/],
+  ])('refuses %j', (settings, message) => {
+    expect(() => parseConfig(JSON.stringify(settings), root)).toThrow(message)
+  })
+})
+
+describe('designSystems and limits', () => {
+  it('are none and 512 files with 16 to spare unless set', () => {
+    const config = parseConfig('', root)
+    expect(config.designSystems).toBeUndefined()
+    expect(config.limits).toEqual({ files: 512, headroom: 16 })
+  })
+  it('take what the file sets, keeping the other limit', () => {
+    const config = parseConfig(JSON.stringify({ designSystems: { zeta: '2', acme: '3' }, limits: { headroom: 40 } }), root)
+    expect(config.designSystems).toEqual({ acme: '3', zeta: '2' })
+    expect(config.limits).toEqual({ files: 512, headroom: 40 })
+  })
+  it.each([
+    [{ designSystems: [] }, /"designSystems" must be an object of design system namespace to version/],
+    [{ designSystems: { acme: 3 } }, /"designSystems" must be an object/],
+    [{ limits: 512 }, /"limits" must be an object/],
+    [{ limits: { file: 1 } }, /"limits.file" is not a limit/],
+    [{ limits: { files: 0 } }, /"limits.files" must be a whole number above 0/],
+    [{ limits: { headroom: -1 } }, /"limits.headroom" must be a whole number, 0 or more/],
+    [{ limits: { headroom: 1.5 } }, /"limits.headroom" must be a whole number/],
+  ])('refuse %j', (settings, message) => {
+    expect(() => parseConfig(JSON.stringify(settings), root)).toThrow(message)
   })
 })
