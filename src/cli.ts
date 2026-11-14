@@ -4,7 +4,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { CONFIG_FILE, loadConfig, type Config } from './config.ts'
+import { CONFIG_FILE, LEGACY_CONFIG_FILE, loadConfig, type Config } from './config.ts'
 import { compareOptions, storyShotOptions } from './pictures.ts'
 import { loadHooks } from './hooks.ts'
 import { checkProblems, project, storyTitles } from './project.ts'
@@ -18,7 +18,7 @@ const flag = (argv: readonly string[], name: string) => {
 
 const snapshot = (config: Config, argv: readonly string[]) => {
   const { from, version, only, tokens } = snapshotOptions(argv)
-  if (config.artifact === null) throw new SnapshotError(`No canvas link yet: set "artifact" in ${CONFIG_FILE} for the first snapshot (later ones read it from artifact.json).`)
+  if (config.artifact === null) throw new SnapshotError(`No canvas link yet: set "artifact" in ${CONFIG_FILE} (or ${LEGACY_CONFIG_FILE}) for the first snapshot (later ones read it from artifact.json).`)
   const p = project(config)
   const map = p.map()
   const read = (path: string) => (existsSync(join(from, 'project', path)) ? readFileSync(join(from, 'project', path), 'utf8') : undefined)
@@ -80,7 +80,7 @@ const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <fil
        drawing-board page-shots [--out <dir>] [--theme <theme>] [--only page,page] [--mark <selector>]
        drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list
        drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]
-Settings come from the nearest ${CONFIG_FILE}, every one defaulted (see the README).`
+Settings come from the nearest ${CONFIG_FILE} (or ${LEGACY_CONFIG_FILE}), every one defaulted (see the README).`
 
 /** The browser commands load the browser code only when they run, so the snapshot commands never need playwright-core. */
 const browserCommand = async (command: string, argv: readonly string[], config: () => Config) => {

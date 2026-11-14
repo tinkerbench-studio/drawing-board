@@ -84,8 +84,47 @@ describe('drawing-board', () => {
     expect(refused.stderr).toMatch(/Z\.dc\.html is named to refresh but is not on the canvas/)
     expect(Object.keys(boards(dir)).sort()).toEqual(['A.map.json', 'B.map.json', 'C.map.json'])
     const bare = mkdtempSync(join(tmpdir(), 'drawing-board-bare-'))
-    expect(run(bare, ['snapshot', '--from', bare, '--version', 'v1']).stderr).toMatch(/No canvas link yet: set "artifact" in .drawing-board/)
+    expect(run(bare, ['snapshot', '--from', bare, '--version', 'v1']).stderr).toMatch(/No canvas link yet: set "artifact" in drawing-board.config.json \(or .drawing-board\)/)
     expect(run(bare, ['nonsense']).status).toBe(2)
+  })
+})
+
+describe('drawing-board check, with the optional checks', () => {
+  /** A refreshed project whose committed copy of A is then hand-edited to break each optional check (the hash check also fails; the tests look for the lines they name). */
+  const broken = (configFile: string) => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    write(dir, '.drawing-board', '')
+    write(dir, configFile, JSON.stringify({ artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas', checks: { repeatedSampleKeys: true, outlineSelectors: true, passedSamples: true, tokenThemes: true, tokensCss: ['src/*.css'] } }))
+    write(dir, 'canvas/boards/A.dc.html', '<b data-sample="a.v">1</b><dc-import data-sample-n="a.b">')
+    write(dir, 'canvas/boards/A.map.json', JSON.stringify({ story: 'L/A', outline: { board: ['.nope'] } }))
+    write(dir, 'canvas/tokens.json', JSON.stringify({ color: { themes: [{ id: 'dark' }], tokens: [{ name: 'ink', value: '#000', values: {} }] } }))
+    write(dir, 'src/site.css', ':root{--ink:#111}')
+    return dir
+  }
+  it.each(['drawing-board.config.json', '.drawing-board'])('runs each turned-on check from %s and names each problem', file => {
+    const check = run(broken(file), ['check'])
+    expect(check.status).toBe(1)
+    for (const line of ['A.dc.html: outline ".nope" names nothing on the board.', 'A.dc.html: data-sample="a.b" names the prop "n"', 'tokens.json: colour "ink" has no dark value.', 'colour "ink" is #000 on the canvas but --ink is #111 in the CSS.']) expect(check.stderr, line).toContain(line)
+  })
+  it('says a repeated key on its own, before the snapshot comparison would refuse it', () => {
+    const dir = broken('drawing-board.config.json')
+    write(dir, 'canvas/boards/A.dc.html', '<b data-sample="a.v">1</b><b data-sample="a.v">1</b>')
+    const check = run(dir, ['check'])
+    expect(check.status).toBe(1)
+    expect(check.stderr).toContain('A.dc.html: data-sample "a.v" is used more than once')
+    expect(check.stderr).not.toContain('is used twice')
+  })
+  it('runs none of them when none is turned on', () => {
+    const dir = broken('drawing-board.config.json')
+    write(dir, 'drawing-board.config.json', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas' }))
+    const { stderr } = run(dir, ['check'])
+    for (const text of ['used more than once', 'names nothing on the board', 'names the prop', 'has no dark value', 'in the CSS']) expect(stderr, text).not.toContain(text)
+  })
+  it('says when the stylesheet globs find nothing', () => {
+    const dir = broken('drawing-board.config.json')
+    write(dir, 'drawing-board.config.json', JSON.stringify({ artifact: 'https://claude.ai/artifact/x', snapshot: 'canvas', checks: { tokensCss: ['nowhere/*.css'] } }))
+    expect(run(dir, ['check']).stderr).toContain('checks.tokensCss: nowhere/*.css found no stylesheet.')
   })
 })
 

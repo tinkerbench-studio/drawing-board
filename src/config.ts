@@ -1,12 +1,24 @@
 // A project's `.drawing-board` file: convention over configuration. Every field has a default, so a project laid out
 // the conventional way needs no file; the file names only what differs. Found by walking up from the working folder.
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 
 import { SnapshotError } from './sample.ts'
 import { TICKET_PAGE } from './snapshot.ts'
 
-export const CONFIG_FILE = '.drawing-board'
+/** The preferred name of a project's config file. */
+export const CONFIG_FILE = 'drawing-board.config.json'
+/** The earlier name, still read for compatibility: used when the preferred file is not in the same folder. */
+export const LEGACY_CONFIG_FILE = '.drawing-board'
+/** Both names, preferred first. */
+export const CONFIG_FILES = [CONFIG_FILE, LEGACY_CONFIG_FILE] as const
+
+/** The optional generic checks `drawing-board check` runs when a project turns them on; every one is off by default. */
+export const CHECK_FLAGS = ['repeatedSampleKeys', 'outlineSelectors', 'passedSamples', 'tokenThemes'] as const
+export type Checks = { [flag in (typeof CHECK_FLAGS)[number]]?: true } & {
+  /** Globs (from the project folder) of the stylesheets the canvas's tokens are held to; none turns the check off. */
+  tokensCss?: string[]
+}
 
 /** The conventions: what a project gets for each field it leaves out. */
 export const DEFAULTS = {
@@ -36,6 +48,8 @@ export type Config = {
   out: string
   /** Where each board's differences file (`<Board>.json`) lives, absolute; the snapshot's `differences/` folder unless set. */
   differences: string
+  /** The optional generic checks turned on (the `checks` setting); none by default. */
+  checks: Checks
   /** The themes `page-shots` draws each page in, set as `data-theme` on `<html>`; none draws the page as it is. */
   themes: string[]
   /** The project's hook module, absolute, when set; else found by convention in the snapshot folder (hooks.ts). */
@@ -44,7 +58,7 @@ export type Config = {
   root: string
 }
 
-const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks'])
+const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
@@ -56,37 +70,54 @@ const recordedArtifact = (snapshot: string): string | null => {
   return typeof artifact === 'string' ? artifact : null
 }
 
+const parseChecks = (value: unknown, name: string): Checks => {
+  if (value === undefined) return {}
+  if (!isRecord(value)) throw new SnapshotError(`${name}: "checks" must be an object naming the checks to run (${[...CHECK_FLAGS, 'tokensCss'].join(', ')}).`)
+  const checks: Checks = {}
+  for (const [key, flag] of Object.entries(value)) {
+    if (key === 'tokensCss') {
+      if (!Array.isArray(flag) || flag.length === 0 || !flag.every(g => typeof g === 'string' && g !== '')) throw new SnapshotError(`${name}: "checks.tokensCss" must be a list of stylesheet globs.`)
+      checks.tokensCss = flag as string[]
+    } else if ((CHECK_FLAGS as readonly string[]).includes(key)) {
+      if (typeof flag !== 'boolean') throw new SnapshotError(`${name}: "checks.${key}" must be true or false.`)
+      if (flag) (checks as Record<string, true>)[key] = true
+    } else throw new SnapshotError(`${name}: "checks.${key}" is not a check (${[...CHECK_FLAGS, 'tokensCss'].join(', ')}).`)
+  }
+  return checks
+}
+
 /** The config from the file's text (empty for no file), every field defaulted, paths resolved from `root`. Refuses a field it does not know or one of the wrong type, naming it. */
-export const parseConfig = (text: string, root: string): Config => {
+export const parseConfig = (text: string, root: string, name: string = CONFIG_FILE): Config => {
   let raw: unknown = {}
   if (text.trim() !== '') {
     try {
       raw = JSON.parse(text)
     } catch {
-      throw new SnapshotError(`${CONFIG_FILE} is not JSON.`)
+      throw new SnapshotError(`${name} is not JSON.`)
     }
   }
-  if (!isRecord(raw)) throw new SnapshotError(`${CONFIG_FILE} is not a JSON object.`)
-  for (const key of Object.keys(raw)) if (!KNOWN.has(key)) throw new SnapshotError(`${CONFIG_FILE}: "${key}" is not a setting (${[...KNOWN].join(', ')}).`)
+  if (!isRecord(raw)) throw new SnapshotError(`${name} is not a JSON object.`)
+  for (const key of Object.keys(raw)) if (!KNOWN.has(key)) throw new SnapshotError(`${name}: "${key}" is not a setting (${[...KNOWN].join(', ')}).`)
   const field = (name: string): string | undefined => {
     const value = raw[name]
     if (value === undefined) return undefined
-    if (typeof value !== 'string' || value === '') throw new SnapshotError(`${CONFIG_FILE}: "${name}" must be a non-empty string.`)
+    if (typeof value !== 'string' || value === '') throw new SnapshotError(`${name}: "${name}" must be a non-empty string.`)
     return value
   }
   const stories = raw.stories ?? DEFAULTS.stories
-  if (!Array.isArray(stories) || stories.length === 0 || !stories.every(s => typeof s === 'string' && s !== '')) throw new SnapshotError(`${CONFIG_FILE}: "stories" must be a list of globs.`)
+  if (!Array.isArray(stories) || stories.length === 0 || !stories.every(s => typeof s === 'string' && s !== '')) throw new SnapshotError(`${name}: "stories" must be a list of globs.`)
   const pages = field('prototypePages')
   let prototypePages = TICKET_PAGE
   if (pages !== undefined) {
     try {
       prototypePages = new RegExp(pages, 'i')
     } catch {
-      throw new SnapshotError(`${CONFIG_FILE}: "prototypePages" is not a regular expression.`)
+      throw new SnapshotError(`${name}: "prototypePages" is not a regular expression.`)
     }
   }
   const themes = raw.themes ?? []
-  if (!Array.isArray(themes) || !themes.every(s => typeof s === 'string' && /^[a-z][a-z0-9-]*$/.test(s))) throw new SnapshotError(`${CONFIG_FILE}: "themes" must be a list of theme names, such as ["dark", "light"].`)
+  if (!Array.isArray(themes) || !themes.every(s => typeof s === 'string' && /^[a-z][a-z0-9-]*$/.test(s))) throw new SnapshotError(`${name}: "themes" must be a list of theme names, such as ["dark", "light"].`)
+  const checks = parseChecks(raw.checks, name)
   const snapshot = resolve(root, field('snapshot') ?? DEFAULTS.snapshot)
   const tokensBoard = field('tokensBoard')
   const hooks = field('hooks')
@@ -100,23 +131,24 @@ export const parseConfig = (text: string, root: string): Config => {
     storybook: resolve(root, field('storybook') ?? DEFAULTS.storybook),
     out: resolve(root, field('out') ?? DEFAULTS.out),
     differences: resolve(root, field('differences') ?? join(snapshot, 'differences')),
+    checks,
     themes: themes as string[],
     ...(hooks === undefined ? {} : { hooks: resolve(root, hooks) }),
     root,
   }
 }
 
-/** The nearest `.drawing-board` at or above `from`, or undefined. */
+/** The nearest config file at or above `from`, or undefined. In one folder the preferred name wins over the legacy one. */
 export const findConfig = (from: string): string | undefined => {
   for (let dir = resolve(from); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, CONFIG_FILE))) return join(dir, CONFIG_FILE)
+    for (const name of CONFIG_FILES) if (existsSync(join(dir, name))) return join(dir, name)
     if (dirname(dir) === dir) return undefined
   }
 }
 
-/** The config at `path`; else the nearest `.drawing-board` above the working folder; else every default, from the working folder. */
+/** The config at `path`; else the nearest config file above the working folder; else every default, from the working folder. */
 export const loadConfig = (path?: string): Config => {
   if (path !== undefined && !existsSync(path)) throw new SnapshotError(`${resolve(path)} was not found.`)
   const file = path === undefined ? findConfig(process.cwd()) : resolve(path)
-  return file === undefined ? parseConfig('', process.cwd()) : parseConfig(readFileSync(file, 'utf8'), dirname(file))
+  return file === undefined ? parseConfig('', process.cwd()) : parseConfig(readFileSync(file, 'utf8'), dirname(file), basename(file))
 }

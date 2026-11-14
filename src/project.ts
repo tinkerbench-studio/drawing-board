@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 
 import { coverageProblems, publishedProblems, snapshotProblems, storyIndexProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import type { Config } from './config.ts'
+import { outlineProblems, passedSampleProblems, sampleKeyProblems, themeValueProblems, tokenCssProblems } from './extra-checks.ts'
 import { componentMarkup } from './html.ts'
 import { sampleData } from './sample.ts'
 import { componentsOf, indexOf, isMapFile, isMetaFile, parseMap, parseMeta, parseTokens, samplesOf, screensOf, STORY_INDEX, type BoardMap, type BoardMeta } from './snapshot.ts'
@@ -36,6 +37,13 @@ export const storyTitles = (config: Config): string[] => {
   return [...titles].sort()
 }
 
+/** The canvas's tokens against the stylesheets the globs find, from the project folder (never node_modules). A glob that finds nothing is a problem, so a moved stylesheet is noticed. */
+const tokensCssProblems = (config: Config, tokensText: string, globs: readonly string[]): string[] => {
+  const files = globs.flatMap(pattern => globSync(pattern, { cwd: config.root, exclude: (name: string) => name === 'node_modules' }))
+  if (files.length === 0) return [`checks.tokensCss: ${globs.join(', ')} found no stylesheet.`]
+  return tokenCssProblems(JSON.parse(tokensText), files.map(f => readFileSync(join(config.root, f), 'utf8')).join('\n'))
+}
+
 /** Every problem with the committed snapshot, as lines; empty when it is in step. */
 export const checkProblems = (config: Config): string[] => {
   const p = project(config)
@@ -44,8 +52,21 @@ export const checkProblems = (config: Config): string[] => {
   const screens = screensOf(map)
   const known = existsSync(p.file(UNPUBLISHED_KNOWN)) ? (JSON.parse(p.read(UNPUBLISHED_KNOWN)) as UnpublishedKnown) : {}
   const tokensBoard = config.tokensBoard === undefined ? [] : p.copy(config.tokensBoard) === undefined ? [`${config.tokensBoard} is the tokens board but has no copy in boards/: map it to its story and refresh.`] : tokenBoardProblems(parseTokens(p.read('tokens.json')), p.copy(config.tokensBoard)!)
+  const copyTexts = () => Object.fromEntries(p.copies().map(f => [f, p.read(`boards/${f}`)]))
+  const { checks } = config
+  const repeated = checks.repeatedSampleKeys ? sampleKeyProblems(copyTexts()) : []
+  const extra = [
+    ...repeated,
+    ...(checks.outlineSelectors ? outlineProblems(map, p.copy) : []),
+    ...(checks.passedSamples ? passedSampleProblems(copyTexts()) : []),
+    ...(checks.tokenThemes ? themeValueProblems(JSON.parse(p.read('tokens.json'))) : []),
+    ...(checks.tokensCss ? tokensCssProblems(config, p.read('tokens.json'), checks.tokensCss) : []),
+  ]
+  // A repeated key would stop the snapshot comparison below with a plainer refusal, so say it, and the rest, on its own.
+  if (repeated.length > 0) return extra
   return [
     ...tokensBoard,
+    ...extra,
     ...storyIndexProblems(existsSync(p.file(STORY_INDEX)) ? p.read(STORY_INDEX) : undefined, map),
     ...coverageProblems(indexOf(all), map, storyTitles(config), p.copies()),
     ...publishedProblems(indexOf(all), map, p.copy, known),
