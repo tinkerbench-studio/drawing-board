@@ -6,7 +6,7 @@ import type { Plugin } from 'esbuild'
 
 /** Vite's eager `import.meta.glob('<pattern>', { eager: true, … })` of JSON files, as the object Vite would give: path → parsed JSON. */
 export const expandGlobs = (source: string, dir: string): string =>
-  source.replace(/import\.meta\.glob(?:<[^>()]*>)?\(\s*(['"])([^'"]+)\1\s*(?:,\s*\{[^}]*\})?\s*\)/g, (whole, _quote: string, pattern: string) => {
+  source.replace(/import\.meta\.glob(?:<(?:[^<>()]|<(?:[^<>()]|<[^<>]*>)*>)*>)?\(\s*(['"])([^'"]+)\1\s*(?:,\s*\{[^}]*\})?\s*,?\s*\)/g, (whole, _quote: string, pattern: string) => {
     if (!pattern.endsWith('.json')) return whole
     const files = globSync(pattern, { cwd: dir }).sort()
     return `(${JSON.stringify(Object.fromEntries(files.map(f => [`./${relative(dir, join(dir, f)).replaceAll('\\', '/')}`, JSON.parse(readFileSync(join(dir, f), 'utf8'))])))})`
