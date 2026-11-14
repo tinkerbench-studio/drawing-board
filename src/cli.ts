@@ -7,9 +7,9 @@ import { dirname, join } from 'node:path'
 import { CONFIG_FILE, LEGACY_CONFIG_FILE, loadConfig, type Config } from './config.ts'
 import { compareOptions, storyShotOptions } from './pictures.ts'
 import { loadHooks } from './hooks.ts'
-import { checkProblems, project, storyTitles } from './project.ts'
+import { checkProblems, checkWarnings, project, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
-import { buildSnapshot, metaPath, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf } from './snapshot.ts'
+import { buildSnapshot, metaPath, notCopiedNotes, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf } from './snapshot.ts'
 
 const flag = (argv: readonly string[], name: string) => {
   const at = argv.indexOf(`--${name}`)
@@ -26,6 +26,7 @@ const snapshot = (config: Config, argv: readonly string[]) => {
   if (canvasText === undefined) throw new SnapshotError(`${from}/project/canvas.json was not read.`)
   const tokensText = read(config.tokens)
   if (tokensText === undefined) throw new SnapshotError(`${from}/project/${config.tokens} was not read.`)
+  for (const note of notCopiedNotes(only ?? [], map)) console.warn(`warning: ${note}`)
   const before = new Map(p.metas().map(m => [m.file, m]))
   const snap = buildSnapshot({ canvas: JSON.parse(canvasText), tokensText, version, map, read, previous: f => before.get(f), only, tokens, existing: [...before.values()], prototype: config.prototypePages })
   const runtime = join(from, 'artifact-type/dc-runtime.js')
@@ -51,6 +52,7 @@ const snapshot = (config: Config, argv: readonly string[]) => {
 const check = async (config: Config) => {
   const hooks = await loadHooks(config)
   const problems = [...checkProblems(config), ...((await hooks.checks?.({ config, canvas: project(config) })) ?? [])]
+  for (const warning of checkWarnings(config)) console.warn(`warning: ${warning}`)
   if (problems.length > 0) {
     console.error(problems.map(problem => `- ${problem}`).join('\n'))
     process.exitCode = 1

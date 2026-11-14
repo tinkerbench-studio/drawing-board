@@ -59,6 +59,29 @@ export const coverageProblems = (index: BoardIndex, map: BoardMap, storyTitles: 
   return problems
 }
 
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** A note that says the board is built: "built", "implemented", but not "not built yet". */
+const SAYS_BUILT = /\b(?<!not )(?<!not yet )(built|implemented)\b/i
+
+/**
+ * Warnings, not failures: a board mapped `none` that looks built. A story's text names the board (its file, or its
+ * name without `.dc.html`), or the board's own note says it is built. A `none` board has no copy in the snapshot, so
+ * its markup is never committed and nothing can be compared with it: map it to the story and refresh it.
+ * `stories` is each story file's text by path.
+ */
+export const noneWarnings = (map: BoardMap, stories: Record<string, string>): string[] => {
+  const warnings: string[] = []
+  for (const [file, entry] of Object.entries(map)) {
+    if (entry.story !== undefined || !entry.none) continue
+    const stem = file.replace(/\.dc\.html$/, '')
+    const name = new RegExp(`(?<![\\w-])(${escape(file)}|${escape(stem)})(?![\\w-])`)
+    const named = Object.entries(stories).find(([, text]) => name.test(text))?.[0]
+    const reason = named !== undefined ? `${named} names it` : SAYS_BUILT.test(entry.none) ? `its note says it is built ("${entry.none}")` : undefined
+    if (reason !== undefined) warnings.push(`${file} is mapped none, but ${reason}: map it to its story in ${mapPath(file)} and refresh the snapshot, or its markup is never committed.`)
+  }
+  return warnings
+}
+
 /** The snapshot's samples and components must be what its committed copies hold. */
 export const snapshotProblems = (committed: { samples: SampleData; components: ComponentData }, fresh: { samples: SampleData; components: ComponentData }): string[] => [...sampleProblems(committed.samples, fresh.samples), ...(JSON.stringify(committed.components) !== JSON.stringify(fresh.components) ? ['the components in the boards/*.meta.json files differ from the data-component markup in boards/: refresh the snapshot.'] : [])]
 

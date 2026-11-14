@@ -90,7 +90,11 @@ Each board has, under `<snapshot>/boards/`:
   copy's hash and version, `data-sample` values and `data-component` markup. The version moves only
   when the copy does.
 - `<Board>.map.json`, kept by hand: `{"story": "Pages/Account"}` (optionally `"status"`, `"page"` for
-  its full-page story's export, `"decided"`), or `{"none": "why"}`.
+  its full-page story's export, `"decided"`), or `{"none": "why"}`. **A board that is built must be
+  mapped to its story, not `none`:** the snapshot copies a board's markup only when a story shows it,
+  so a `none` board has nothing to compare with. `check` warns (without failing) when a `none` board
+  is named by a story or its note says it is built, and fails when a mapped board has no copy;
+  `snapshot --boards` says when a named board is `none` and so was not copied.
 - `<Board>.dc.html`, the copy, for a board a story shows.
 
 ### The conventions, and `drawing-board.config.json`

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { boardsOf, buildSnapshot, copyHash, isMapFile, mapPath, parseMap, parseTokens, refreshedNames, screensOf, snapshotOptions, type BoardMap } from './snapshot.ts'
+import { boardsOf, buildSnapshot, copyHash, isMapFile, mapPath, notCopiedNotes, parseMap, parseTokens, refreshedNames, screensOf, snapshotOptions, type BoardMap } from './snapshot.ts'
 import { SnapshotError } from './sample.ts'
 
 const tokens = readFileSync(new URL('./fixtures/tokens.json', import.meta.url), 'utf8')
@@ -128,6 +128,20 @@ describe('the per-board map entries', () => {
 
   it('leaves the map entries when a refresh clears boards/', () => {
     expect(refreshedNames(['A.dc.html', 'A.meta.json', 'A.map.json', 'support.js'])).toEqual(['A.dc.html', 'A.meta.json', 'support.js'])
+  })
+})
+
+describe('notCopiedNotes', () => {
+  const map: BoardMap = { 'A.dc.html': { story: 'L/A' }, 'B.dc.html': { none: 'not in the snapshot yet' } }
+  it('says why a named none board, and one with no map entry, was not copied', () => {
+    expect(notCopiedNotes(['A.dc.html', 'B.dc.html', 'C.dc.html'], map)).toEqual([
+      'B.dc.html is mapped none (not in the snapshot yet), so its markup was not copied: map it to a story in boards/B.map.json, then refresh it again.',
+      'C.dc.html has no map entry (boards/C.map.json), so its markup was not copied: map it to a story in boards/C.map.json, then refresh it again.',
+    ])
+  })
+  it('says nothing for a board a story shows, or for a full refresh', () => {
+    expect(notCopiedNotes(['A.dc.html'], map)).toEqual([])
+    expect(notCopiedNotes([], map)).toEqual([])
   })
 })
 
