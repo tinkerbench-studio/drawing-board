@@ -126,6 +126,7 @@ Every refresh writes the snapshot's record of the canvas it read, in this order:
   "fullVersion": "48",
   "files": 311,
   "canvasBoards": 240,
+  "unread": ["acme"],
   "boards": ["Account.dc.html", "Home.dc.html"],
   "designSystems": { "acme": "3" }
 }
@@ -135,7 +136,8 @@ Every refresh writes the snapshot's record of the canvas it read, in this order:
 - `version` is the version read. `fullVersion` is the version of the last full refresh; a partial one
   keeps it, and it is left out until there has been one.
 - `files` is how many files the canvas holds, counted as in "The canvas's 512 files" below.
-  `canvasBoards` is how many of them are boards, on every page.
+  `canvasBoards` is how many of them are boards, on every page. `unread` names the installed design
+  systems whose files were not read, so `files` is a lower bound; it is left out when there are none.
 - `boards` lists the boards on the canvas, outside prototype pages, sorted.
 - `designSystems` is each design system installed on the canvas (`designSystems` in `canvas.json`),
   namespace to version.
@@ -172,13 +174,23 @@ files: dark, light and a 390 px view of each.
 A refresh counts them from what it read. A read holds only `canvas.json`, the tokens and the boards
 a story shows, so the count does not rest on the folder alone: it is every board `canvas.json` lists,
 on every page (prototype pages too), plus `canvas.json` and the tokens file, plus every other file the
-folder holds (`project/ds/**`, assets); or the folder's own file count, when that is larger. When the
-folder holds no files under `project/ds/<namespace>/` for a design system `canvas.json` lists, the
-refresh and `status` say those files were not read, and that the canvas holds at least that many. A
-partial refresh never lowers the recorded count while `canvas.json` lists as many boards as before,
-since a read for a few boards often leaves out files a full read held.
+folder holds (`project/ds/**`, assets); or the folder's own file count, when that is larger.
 
-`check` says how many are in use, from the record's `files`:
+- **What it assumes.** `canvas.json` names each installed design system but not its files. So the
+  count assumes every file under `project/ds/<namespace>/` was read when any of it was; reading only
+  some of a namespace's files cannot be detected. `snapshot` and `status` say so.
+- **Not read at all.** When the folder holds no files under `project/ds/<namespace>/` for a design
+  system `canvas.json` lists, the refresh records it in `unread`, and `snapshot`, `status` and `check`
+  say the canvas holds at least that many files.
+- **A partial refresh** reads only a few boards, so its folder often lacks files a full read held. It
+  takes the files that are not boards from the last record as a floor: the boards `canvas.json` lists
+  now, plus the last `files` less the last `canvasBoards`. It keeps the last `unread` when it uses the
+  floor. A full refresh stores the count as counted. A count kept by the floor can stay too high
+  after files are removed from the canvas, until the next full refresh. A record from before
+  `canvasBoards` gives no floor, so the first partial refresh after upgrading stores what it counted.
+
+`check` says how many are in use, from the record's `files` ("at least", with the reason, when the
+record has `unread`):
 
 ```
 Canvas files: 311 of 512 in use, 201 free (canvas version 52).
@@ -197,6 +209,8 @@ code. `check` also warns about:
   does);
 - each design system in the `designSystems` setting whose recorded version is missing or different
   ("installed 2, expected 3: install it again on the canvas, then refresh");
+- a board mapped `none` that a story names, or whose note says it is built (map it to its story and
+  refresh, or its markup is never committed);
 - a map entry's `tags` that is not a list of non-empty strings (`find` then leaves it out). A map
   entry may hold a project's own fields, so this never fails an existing project's check.
 
