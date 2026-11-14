@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { boardsOf, buildSnapshot, copyHash, isMapFile, mapPath, parseMap, parseTokens, refreshedNames, screensOf, snapshotOptions, type BoardMap } from './snapshot.ts'
+import { boardsOf, buildSnapshot, copyHash, designSystemsOf, isMapFile, mapPath, parseMap, parsePages, parseRecord, parseTokens, recordText, refreshedNames, screensOf, snapshotOptions, unrecordedBoards, type BoardMap } from './snapshot.ts'
 import { SnapshotError } from './sample.ts'
 
 const tokens = readFileSync(new URL('./fixtures/tokens.json', import.meta.url), 'utf8')
@@ -144,5 +144,56 @@ describe('snapshotOptions', () => {
 
   it('needs --from and --version', () => {
     expect(() => snapshotOptions(['--boards', 'A.dc.html'])).toThrow(/Usage/)
+  })
+})
+
+describe('the record, artifact.json', () => {
+  const base = { canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', files: 40, boards: ['B.dc.html', 'A.dc.html'], designSystems: { zeta: '1', acme: '3' } }
+
+  it('is written in a fixed key order, its boards and design systems sorted, and a full refresh sets fullVersion', () => {
+    const text = recordText({ ...base, full: true })
+    expect(text).toBe(JSON.stringify({ canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', fullVersion: 'v2', files: 40, boards: ['A.dc.html', 'B.dc.html'], designSystems: { acme: '3', zeta: '1' } }, null, 2) + '\n')
+    expect(Object.keys(JSON.parse(text))).toEqual(['canvas', 'artifact', 'version', 'fullVersion', 'files', 'boards', 'designSystems'])
+  })
+
+  it('keeps the previous fullVersion on a partial refresh, and leaves it out when there was none', () => {
+    expect(JSON.parse(recordText({ ...base, full: false, previous: { fullVersion: 'v1' } })).fullVersion).toBe('v1')
+    expect(Object.keys(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })))).toEqual(['canvas', 'artifact', 'version', 'files', 'boards', 'designSystems'])
+  })
+
+  it('reads an old record holding only the link, and leaves out a field of the wrong type', () => {
+    expect(parseRecord('{"artifact":"https://claude.ai/artifact/old"}')).toEqual({ artifact: 'https://claude.ai/artifact/old' })
+    expect(parseRecord('{"canvas":1,"files":"12","boards":[1],"designSystems":{"a":"1","b":2}}')).toEqual({ designSystems: { a: '1' } })
+    expect(() => parseRecord('{')).toThrow(/artifact\.json is not JSON/)
+    expect(() => parseRecord('[]')).toThrow(/not a JSON object/)
+  })
+
+  it("takes the design systems from canvas.json's list, skipping an entry with no string namespace or version", () => {
+    expect(designSystemsOf({ designSystems: [{ title: 'Acme', namespace: 'acme', version: '3', artifact: 'a', copiedAt: 't' }, { namespace: 'x' }, { namespace: 'y', version: 4 }, 'z'] })).toEqual({ acme: '3' })
+    expect(designSystemsOf({ boards: {} })).toEqual({})
+  })
+
+  it('lists the boards on the canvas the snapshot has no meta file for, leaving out the named ones', () => {
+    expect(unrecordedBoards(['C.dc.html', 'A.dc.html', 'B.dc.html'], ['A.dc.html'], ['B.dc.html'])).toEqual(['C.dc.html'])
+  })
+})
+
+describe('the pages, pages.json', () => {
+  it('reads each page with its flow, prefixes and keywords', () => {
+    const pages = { queue: { flow: 'Merge a pull request', prefixes: ['Queue'], keywords: ['merge queue'] }, admin: { flow: 'Run the studio' } }
+    expect(parsePages(JSON.stringify(pages))).toEqual(pages)
+  })
+
+  it.each([
+    ['{', /pages\.json is not JSON/],
+    ['[]', /not an object of pages by id/],
+    ['{"a":"flow"}', /the page "a" is not an object/],
+    ['{"a":{}}', /the page "a" has no "flow"/],
+    ['{"a":{"flow":" "}}', /the page "a" has no "flow"/],
+    ['{"a":{"flow":"f","prefixes":"Main"}}', /the page "a" has "prefixes" that is not a list of non-empty strings/],
+    ['{"a":{"flow":"f","keywords":["ok",""]}}', /the page "a" has "keywords" that is not a list of non-empty strings/],
+    ['{"a":{"flow":"f","keyword":["x"]}}', /the page "a" has "keyword", which is not a field/],
+  ])('refuses %s', (text, message) => {
+    expect(() => parsePages(text)).toThrow(message)
   })
 })
