@@ -2,7 +2,7 @@
 import { existsSync, globSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { coverageProblems, publishedProblems, snapshotProblems, storyIndexProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
+import { coverageProblems, noneWarnings, publishedProblems, snapshotProblems, storyIndexProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import type { Config } from './config.ts'
 import { outlineProblems, passedSampleProblems, sampleKeyProblems, themeValueProblems, tokenCssProblems } from './extra-checks.ts'
 import { componentMarkup } from './html.ts'
@@ -35,6 +35,14 @@ export const storyTitles = (config: Config): string[] => {
       if (title !== undefined) titles.add(title)
     }
   return [...titles].sort()
+}
+
+/** Warnings about the snapshot that do not fail the check: a board mapped none that looks built. */
+export const checkWarnings = (config: Config): string[] => {
+  const stories: Record<string, string> = {}
+  const skipped = new Set(['node_modules', '.git', basename(config.storybook)])
+  for (const pattern of config.stories) for (const path of globSync(pattern, { cwd: config.root, exclude: (name: string) => skipped.has(basename(name)) })) stories[path] = readFileSync(join(config.root, path), 'utf8')
+  return noneWarnings(project(config).map(), stories)
 }
 
 /** The canvas's tokens against the stylesheets the globs find, from the project folder (never node_modules). A glob that finds nothing is a problem, so a moved stylesheet is noticed. */
