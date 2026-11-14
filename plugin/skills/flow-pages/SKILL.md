@@ -7,8 +7,10 @@ description: How a project's design canvas is split into pages, one per user flo
 
 A page holds one **flow**: a journey a person takes from a starting point to an outcome
 ("sign up", "forward a booking email", "upgrade a trip", "review a training case"). A board belongs
-to the flow it is a step of. The project's pages are listed in `.claude/drawing-board.md`, each with
-the flow it covers and the board name prefixes it holds.
+to the flow it is a step of. The project's pages are listed in `<snapshot>/pages.json`, each with
+its `flow` in one line, the `prefixes` its boards' names start with, and the `keywords` a ticket
+about it uses. `drawing-board check` fails a board on a page the file does not list, or without one
+of its page's prefixes.
 
 ## Why flows, not areas
 
@@ -29,7 +31,10 @@ What is not a flow goes on its own page:
 
 - **Shared components and patterns** (a dialog, a copy button, a picker) on a `patterns` page.
 - **Error pages** on an `errors` page.
-- **Prototypes** on a page per ticket (`design-change`), never on a flow page.
+- **Prototypes** on a page per ticket (`design-change`), never on a flow page; on the `prototypes`
+  canvas when the project has one.
+- **Boards that are not app screens** (architecture, another repository's UI) on the `reference`
+  canvas, when the project has one, not among the app's flows.
 
 ## Choosing pages
 
@@ -41,8 +46,8 @@ What is not a flow goes on its own page:
 4. Give every board a page. A board with no page is unreviewable.
 5. Name each page by its flow, as a short lowercase id (`forwarding`, `upgrade`, `admin-users`), and
    give it a title a person reads ("Forward your bookings").
-6. Write the table into `.claude/drawing-board.md`: page id, the flow in one line, and the prefixes
-   of its boards.
+6. Write each page into `<snapshot>/pages.json`: its id, `flow` in one line, the `prefixes` of its
+   boards, and the `keywords` a ticket about it would use.
 
 ## Moving boards between pages
 
@@ -51,7 +56,17 @@ canvas's page index, then a refresh (`canvas-sync`). Where the project still kee
 snapshot file, do the reorganisation in the same change that splits the snapshot per board, so the
 big rewrite happens once.
 
+Moving a board to another canvas (to `reference`, say) keeps its design as it is: copy it there,
+remove it from the first canvas, and refresh both snapshots in the same change. A board's name stays
+unique across canvases.
+
+The canvas stays the source of truth after a design is built, so a built screen's board stays on its
+page; it is not removed because the code now exists. Never delete a board to tidy a page or to make
+room on a canvas. Delete it only when its design is deprecated.
+
 ## Adding a board
 
-A new board joins the page of the flow it is a step of. If no flow fits, that is a new flow: add
-the page and its row in `.claude/drawing-board.md` in the same change.
+A new board joins the page of the flow it is a step of. Choose it by matching the ticket's words to
+each page's `keywords` in `pages.json` (`drawing-board find <words>` shows where similar boards
+are). If no page matches, ask the owner. If no flow fits, that is a new flow: add the page to
+`pages.json` in the same change. Name the board with one of its page's prefixes.

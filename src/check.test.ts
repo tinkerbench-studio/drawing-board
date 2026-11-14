@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { componentProblems, coverageProblems, noneWarnings, publishedProblems, snapshotProblems, storyIndexProblems, tokenBoardProblems, tokenEntries } from './check.ts'
+import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, unreadBound, tokenBoardProblems, tokenEntries } from './check.ts'
 import { copyHash, indexOf, storyIndexOf, type BoardMap, type BoardMeta } from './snapshot.ts'
 
 const meta = (file: string, source?: string): BoardMeta => ({ file, title: null, page: null, w: 1, h: 1, ...(source === undefined ? {} : { copy: { hash: copyHash(source), version: 'v1' } }) })
@@ -113,5 +113,92 @@ describe('snapshotProblems and componentProblems', () => {
   })
   it('names a component that differs, is only built, or is only on the board', () => {
     expect(componentProblems({ A: '<b></b>', B: '<i></i>' }, { A: '<b>x</b>', C: '<p></p>' })).toEqual(['A differs from the board.\n    board: <b></b>\n    built: <b>x</b>', 'C is built but the components board marks no data-component="C".', 'The board marks data-component="B", which is not built.'])
+  })
+})
+
+describe('filesInUse', () => {
+  const limits = { files: 512, headroom: 16 }
+  it('says the files in use and free, as information, when there is room', () => {
+    expect(filesInUse({ used: 300, limits, version: '41' })).toEqual({ line: 'Canvas files: 300 of 512 in use, 212 free (canvas version 41).', warning: false })
+  })
+  it('warns when fewer than the headroom are free, and says what a design costs', () => {
+    const low = filesInUse({ used: 500, limits, version: '41' })
+    expect(low.warning).toBe(true)
+    expect(low.line).toMatch(/^Canvas files: 500 of 512 in use, 12 free \(canvas version 41\)\. Fewer than 16 are free: a design adds about four files/)
+    expect(filesInUse({ used: 496, limits }).warning).toBe(false)
+  })
+  it('warns that a full canvas refuses a publish, and never counts below none free', () => {
+    const full = filesInUse({ used: 520, limits })
+    expect(full.warning).toBe(true)
+    expect(full.line).toMatch(/^Canvas files: 520 of 512 in use, 0 free\. The canvas is full: a publish that adds a file is refused/)
+    expect(filesInUse({ used: 512, limits: { files: 512, headroom: 0 } }).warning).toBe(true)
+  })
+  it('says a count from the meta files is a lower bound, and whether there is a record yet', () => {
+    expect(filesInUse({ used: 102, limits, bound: metaCountBound(true) })).toEqual({ line: 'Canvas files: at least 102 of 512 in use, at most 410 free: artifact.json records no file count, so this is the meta files plus 2, and a refresh records the count.', warning: false })
+    expect(filesInUse({ used: 102, limits, bound: metaCountBound(false) }).line).toBe('Canvas files: at least 102 of 512 in use, at most 410 free: there is no artifact.json yet, so this is the meta files plus 2, and a refresh records the count.')
+    expect(filesInUse({ used: 500, limits, bound: metaCountBound(true) }).warning).toBe(true)
+  })
+  it("says a count from a read without a design system's files is a lower bound", () => {
+    expect(filesInUse({ used: 40, limits, bound: unreadBound(['acme']) }).line).toBe('Canvas files: at least 40 of 512 in use, at most 472 free: no files of the design system acme under project/ds/ were read, so they are not counted.')
+    expect(unreadBound(['a', 'b'])).toMatch(/design systems a, b/)
+  })
+})
+
+describe('recordProblems', () => {
+  const canvas = { id: 'main', artifact: 'https://claude.ai/artifact/m' }
+  it('passes a record of this canvas, an old record with only the link, and an empty one', () => {
+    expect(recordProblems({ canvas: 'main', artifact: canvas.artifact }, canvas)).toEqual([])
+    expect(recordProblems({ artifact: canvas.artifact }, canvas)).toEqual([])
+    expect(recordProblems({}, { id: 'main', artifact: null })).toEqual([])
+  })
+  it('fails a record of another canvas or another link', () => {
+    expect(recordProblems({ canvas: 'reference', artifact: 'https://claude.ai/artifact/r' }, canvas)).toEqual([
+      'artifact.json is the record of the canvas "reference", but this snapshot is the canvas "main": refresh it from its own canvas, or put it in that canvas\'s snapshot folder.',
+      'artifact.json records the canvas https://claude.ai/artifact/r, but the config names https://claude.ai/artifact/m: refresh the snapshot from the canvas the config names, or correct the link.',
+    ])
+  })
+})
+
+describe('the warnings', () => {
+  it('name the boards the record lists that have no meta file', () => {
+    expect(missingBoardWarnings({ boards: ['A.dc.html', 'B.dc.html', 'C.dc.html'] }, ['A.dc.html'])).toEqual(['B.dc.html, C.dc.html are on the canvas (artifact.json) but have no meta file: a full refresh adds them.'])
+    expect(missingBoardWarnings({ boards: ['A.dc.html'] }, ['A.dc.html'])).toEqual([])
+    expect(missingBoardWarnings({}, [])).toEqual([])
+  })
+  it('name a design system at another version, or missing, from the record', () => {
+    expect(designSystemWarnings({ acme: '3', other: '1', same: '2' }, { acme: '2', same: '2' })).toEqual(['design system "acme": installed 2, expected 3: install it again on the canvas, then refresh.', 'design system "other": not recorded as installed on the canvas, expected 1: install it on the canvas, then refresh.'])
+    expect(designSystemWarnings({ acme: '3' }, undefined)).toHaveLength(1)
+    expect(designSystemWarnings({}, { acme: '3' })).toEqual([])
+  })
+})
+
+describe('pageProblems', () => {
+  const board = (file: string, page: string | null) => ({ file, title: null, page, w: 1, h: 1 })
+  const pages = { queue: { flow: 'Merge', prefixes: ['Queue', 'Merge'] }, admin: { flow: 'Run' } }
+  it('passes a board on a listed page whose name has its prefix, or on a page with none', () => {
+    expect(pageProblems([board('QueueList.dc.html', 'queue'), board('MergeDone.dc.html', 'queue'), board('Anything.dc.html', 'admin')], pages)).toEqual([])
+  })
+  it('names a board on no page, on an unlisted page, and one with none of its page\'s prefixes', () => {
+    expect(pageProblems([board('A.dc.html', null), board('B.dc.html', 'gone'), board('Settings.dc.html', 'queue')], pages)).toEqual([
+      'A.dc.html is on no page: put it on the page of its flow (pages.json lists them), then refresh.',
+      'B.dc.html is on the page "gone", which pages.json does not list: add the page to pages.json, or move the board to a page it lists.',
+      'Settings.dc.html is on the page "queue" but starts with none of its prefixes (Queue, Merge): rename the board, or move it to the page it belongs to.',
+    ])
+  })
+})
+
+describe('tagWarnings', () => {
+  it('passes tags that are a list of non-empty strings, and entries with none', () => {
+    expect(tagWarnings({ 'A.dc.html': { story: 'S', tags: ['merge queue'] }, 'B.dc.html': { none: 'x' } })).toEqual([])
+  })
+  it.each([['merge queue'], [['ok', '']], [[1]], [{ a: 'b' }]])('warns about tags of %j', tags => {
+    expect(tagWarnings({ 'A.dc.html': { story: 'S', tags } as BoardMap[string] })).toEqual(['A.dc.html: "tags" in boards/A.map.json is not a list of non-empty strings, such as ["merge queue"], so find does not read it.'])
+  })
+})
+
+describe('duplicateBoardProblems', () => {
+  it('names a board file with a meta file in two snapshots, and both canvases', () => {
+    expect(duplicateBoardProblems({ main: ['A.dc.html', 'B.dc.html'], reference: ['B.dc.html', 'C.dc.html'] })).toEqual(['B.dc.html has a meta file in the snapshots of the canvases main and reference: a board name is unique across canvases, so keep the board on one canvas (or rename one) and refresh both.'])
+    expect(duplicateBoardProblems({ main: ['A.dc.html'] })).toEqual([])
   })
 })

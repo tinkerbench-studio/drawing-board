@@ -26,8 +26,8 @@ export const isMapFile = (name: string): boolean => name.endsWith('.map.json')
 
 /** The SHA-256 of a copy with its line endings as LF, so a checkout that writes CRLF (Windows, `core.autocrlf`) holds the same copy. */
 export const copyHash = (source: string): string => createHash('sha256').update(source.replace(/\r\n/g, '\n')).digest('hex')
-/** How a board relates to Storybook: the story that shows it, how far it is built, or why there is none. Projects may add fields of their own; they are kept as written. */
-export type MapEntry = { story?: string; status?: 'implemented' | 'partial' | 'not built'; none?: string; [field: string]: unknown }
+/** How a board relates to Storybook: the story that shows it, how far it is built, or why there is none, and words to find it by (`tags`). Projects may add fields of their own; they are kept as written. */
+export type MapEntry = { story?: string; status?: 'implemented' | 'partial' | 'not built'; none?: string; tags?: string[]; [field: string]: unknown }
 export type BoardMap = Record<string, MapEntry>
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -220,4 +220,145 @@ export const snapshotOptions = (argv: readonly string[]): { from: string; versio
   const tokens = argv.includes('--tokens')
   if (only === undefined && tokens) throw new SnapshotError('--tokens goes with --boards; a full refresh writes the tokens anyway.')
   return { from, version, ...(only === undefined ? {} : { only }), tokens }
+}
+
+/** The snapshot's own record of the canvas it was read from, written by every refresh. */
+export const ARTIFACT_RECORD = 'artifact.json'
+/**
+ * What `artifact.json` holds: the canvas's id in the config, its link, the version read, the version of the last full
+ * refresh, the files the canvas holds ({@link countCanvasFiles}) and how many of them are boards (on every page), the
+ * installed design systems whose files were not read (`files` is then a lower bound; left out when there are none), its
+ * boards outside prototype pages and the design systems installed on it. A record written by an earlier release holds
+ * only `artifact`, so every field may be missing.
+ */
+export type ArtifactRecord = { canvas?: string; artifact?: string; version?: string; fullVersion?: string; files?: number; canvasBoards?: number; unread?: string[]; boards?: string[]; designSystems?: Record<string, string> }
+
+const isStringList = (value: unknown): value is string[] => Array.isArray(value) && value.every(v => typeof v === 'string')
+const sortedRecord = <T>(entries: [string, T][]): Record<string, T> => Object.fromEntries(entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+
+/** The record from the text of `artifact.json`. A field of the wrong type is left out, so an older or hand-touched record is still read. */
+export const parseRecord = (text: string): ArtifactRecord => {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    throw new SnapshotError(`${ARTIFACT_RECORD} is not JSON: refresh the snapshot to write it again.`)
+  }
+  if (!isRecord(raw)) throw new SnapshotError(`${ARTIFACT_RECORD} is not a JSON object: refresh the snapshot to write it again.`)
+  const record: ArtifactRecord = {}
+  for (const key of ['canvas', 'artifact', 'version', 'fullVersion'] as const) if (typeof raw[key] === 'string') record[key] = raw[key]
+  for (const key of ['files', 'canvasBoards'] as const) if (typeof raw[key] === 'number' && Number.isInteger(raw[key]) && raw[key] >= 0) record[key] = raw[key]
+  if (isStringList(raw.unread) && raw.unread.length > 0) record.unread = raw.unread
+  if (isStringList(raw.boards)) record.boards = raw.boards
+  if (isRecord(raw.designSystems)) record.designSystems = sortedRecord(Object.entries(raw.designSystems).filter((e): e is [string, string] => typeof e[1] === 'string'))
+  return record
+}
+
+/** The design systems installed on a canvas, namespace → version, from `designSystems` in its canvas.json; an entry with no string namespace or version is skipped. */
+export const designSystemsOf = (canvas: unknown): Record<string, string> => {
+  const list = isRecord(canvas) && Array.isArray(canvas.designSystems) ? canvas.designSystems : []
+  return sortedRecord(list.filter(isRecord).flatMap(d => (typeof d.namespace === 'string' && typeof d.version === 'string' ? [[d.namespace, d.version] as [string, string]] : [])))
+}
+
+/**
+ * How many files a canvas holds, from a read of it, and how many of them are boards. `systems` is how many files the
+ * read holds under `ds/<namespace>/` for each installed design system; `unread` names each one with none, so `files`
+ * is then a lower bound.
+ */
+export type FileCount = { files: number; boards: number; systems: Record<string, number>; unread: string[] }
+
+/**
+ * The files a canvas holds, from a read of it: `canvas.json` lists every board, on every page (prototype pages too),
+ * whether the read holds it or not; add canvas.json, the tokens file and every other file the read holds (installed
+ * design systems under `ds/`, assets). The larger of that and the read's own count. `paths` are the read's files,
+ * relative to `project/`. A design system canvas.json lists with no file under `ds/<namespace>/` in the read is named
+ * in `unread`.
+ */
+export const countCanvasFiles = (canvas: unknown, tokens: string, paths: readonly string[]): FileCount => {
+  const boards = isRecord(canvas) && isRecord(canvas.boards) ? Object.keys(canvas.boards) : []
+  const known = new Set([...boards, 'canvas.json', tokens])
+  const others = paths.filter(path => !known.has(path)).length
+  const systems = Object.fromEntries(Object.keys(designSystemsOf(canvas)).map(ns => [ns, paths.filter(path => path.startsWith(`ds/${ns}/`)).length]))
+  const unread = Object.keys(systems).filter(ns => systems[ns] === 0)
+  return { files: Math.max(boards.length + 2 + others, paths.length), boards: boards.length, systems, unread }
+}
+
+/**
+ * The record a refresh writes, its keys in a fixed order. A full refresh sets `fullVersion` to the version read; a
+ * partial one keeps the previous record's, or leaves it out when there was none.
+ *
+ * A full refresh stores the file count as counted. A partial one reads only a few boards, so its folder often lacks
+ * files a full read held: it takes the files that are not boards from the previous record as a floor, whatever the
+ * board count does: `canvasBoards` now, plus the previous `files` less the previous `canvasBoards`, plus the files read
+ * of each design system the previous count left out (one its `designSystems` did not list, or listed as `unread`).
+ * When the floor is used, `unread` is the previous one and each such design system not read now, less the ones read
+ * now, keeping only the design systems installed now. A record from an earlier release has no `canvasBoards`, so it gives no floor: the first
+ * partial refresh after upgrading stores the count as counted.
+ */
+export const recordOf = (input: { canvas: string; artifact: string; version: string; full: boolean; previous?: ArtifactRecord; files: FileCount; boards: readonly string[]; designSystems: Record<string, string> }): ArtifactRecord => {
+  const fullVersion = input.full ? input.version : input.previous?.fullVersion
+  const { files: counted, boards: canvasBoards } = input.files
+  const before = input.previous
+  const countedBefore = new Set(Object.keys(before?.designSystems ?? {}).filter(ns => !(before?.unread ?? []).includes(ns)))
+  const added = Object.keys(input.files.systems).filter(ns => !countedBefore.has(ns))
+  const floor = !input.full && before?.files !== undefined && before.canvasBoards !== undefined ? canvasBoards + Math.max(0, before.files - before.canvasBoards) + added.reduce((sum, ns) => sum + input.files.systems[ns]!, 0) : undefined
+  const floored = floor !== undefined && floor > counted
+  const installed = new Set(Object.keys(input.designSystems))
+  const unread = floored ? [...new Set([...(before?.unread ?? []).filter(ns => !added.includes(ns)), ...added.filter(ns => input.files.systems[ns] === 0)])].filter(ns => installed.has(ns)).sort() : [...input.files.unread].sort()
+  return {
+    canvas: input.canvas,
+    artifact: input.artifact,
+    version: input.version,
+    ...(fullVersion === undefined ? {} : { fullVersion }),
+    files: floored ? floor : counted,
+    canvasBoards,
+    ...(unread.length === 0 ? {} : { unread }),
+    boards: [...input.boards].sort(),
+    designSystems: sortedRecord(Object.entries(input.designSystems)),
+  }
+}
+
+/** The text of `artifact.json`: {@link recordOf} as 2-space JSON and a newline. */
+export const recordText = (input: Parameters<typeof recordOf>[0]): string => JSON.stringify(recordOf(input), null, 2) + '\n'
+
+/** The boards on the canvas the snapshot has no meta file for, sorted, leaving out the ones in `named`. */
+export const unrecordedBoards = (onCanvas: readonly string[], recorded: readonly string[], named: readonly string[] = []): string[] => {
+  const skip = new Set([...recorded, ...named])
+  return onCanvas.filter(file => !skip.has(file)).sort()
+}
+
+/** The snapshot's hand-kept list of the canvas's pages, `pages.json`. A refresh never writes it. */
+export const PAGES_FILE = 'pages.json'
+/** One page: the flow it covers in one line, the prefixes its boards' names start with, and the words a ticket about it uses. */
+export type PageEntry = { flow: string; prefixes?: string[]; keywords?: string[] }
+/** Page id → its entry. */
+export type Pages = Record<string, PageEntry>
+
+const PAGE_FIELDS = new Set(['flow', 'prefixes', 'keywords'])
+
+/** The pages from the text of `pages.json`. Refuses, naming the page and field, what is not that shape. */
+export const parsePages = (text: string): Pages => {
+  const fix = `each page is { "flow": "one line", "prefixes"?: ["Board"], "keywords"?: ["words"] }`
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    throw new SnapshotError(`${PAGES_FILE} is not JSON.`)
+  }
+  if (!isRecord(raw)) throw new SnapshotError(`${PAGES_FILE} is not an object of pages by id: ${fix}.`)
+  const pages: Pages = {}
+  for (const [id, entry] of Object.entries(raw)) {
+    if (!isRecord(entry)) throw new SnapshotError(`${PAGES_FILE}: the page "${id}" is not an object: ${fix}.`)
+    for (const key of Object.keys(entry)) if (!PAGE_FIELDS.has(key)) throw new SnapshotError(`${PAGES_FILE}: the page "${id}" has "${key}", which is not a field (${[...PAGE_FIELDS].join(', ')}).`)
+    if (typeof entry.flow !== 'string' || entry.flow.trim() === '') throw new SnapshotError(`${PAGES_FILE}: the page "${id}" has no "flow": say in one line the journey it covers.`)
+    const page: PageEntry = { flow: entry.flow }
+    for (const key of ['prefixes', 'keywords'] as const) {
+      const list = entry[key]
+      if (list === undefined) continue
+      if (!isStringList(list) || !list.every(s => s.trim() !== '')) throw new SnapshotError(`${PAGES_FILE}: the page "${id}" has "${key}" that is not a list of non-empty strings.`)
+      page[key] = list
+    }
+    pages[id] = page
+  }
+  return pages
 }

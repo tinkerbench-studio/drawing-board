@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { boardsOf, buildSnapshot, copyHash, isMapFile, mapPath, notCopiedNotes, parseMap, parseTokens, refreshedNames, screensOf, snapshotOptions, type BoardMap } from './snapshot.ts'
+import { boardsOf, buildSnapshot, copyHash, countCanvasFiles, designSystemsOf, isMapFile, mapPath, notCopiedNotes, parseMap, parsePages, parseRecord, parseTokens, recordText, refreshedNames, screensOf, snapshotOptions, unrecordedBoards, type BoardMap } from './snapshot.ts'
 import { SnapshotError } from './sample.ts'
 
 const tokens = readFileSync(new URL('./fixtures/tokens.json', import.meta.url), 'utf8')
@@ -158,5 +158,103 @@ describe('snapshotOptions', () => {
 
   it('needs --from and --version', () => {
     expect(() => snapshotOptions(['--boards', 'A.dc.html'])).toThrow(/Usage/)
+  })
+})
+
+describe('the record, artifact.json', () => {
+  const base = { canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', files: { files: 40, boards: 30, systems: { acme: 5, zeta: 5 }, unread: [] }, boards: ['B.dc.html', 'A.dc.html'], designSystems: { zeta: '1', acme: '3' } }
+
+  it('is written in a fixed key order, its boards and design systems sorted, and a full refresh sets fullVersion', () => {
+    const text = recordText({ ...base, full: true })
+    expect(text).toBe(JSON.stringify({ canvas: 'main', artifact: 'https://claude.ai/artifact/x', version: 'v2', fullVersion: 'v2', files: 40, canvasBoards: 30, boards: ['A.dc.html', 'B.dc.html'], designSystems: { acme: '3', zeta: '1' } }, null, 2) + '\n')
+    expect(Object.keys(JSON.parse(text))).toEqual(['canvas', 'artifact', 'version', 'fullVersion', 'files', 'canvasBoards', 'boards', 'designSystems'])
+  })
+
+  it('keeps the previous fullVersion on a partial refresh, and leaves it out when there was none', () => {
+    expect(JSON.parse(recordText({ ...base, full: false, previous: { fullVersion: 'v1' } })).fullVersion).toBe('v1')
+    expect(Object.keys(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })))).toEqual(['canvas', 'artifact', 'version', 'files', 'canvasBoards', 'boards', 'designSystems'])
+  })
+
+  it('floors a partial count on the files that are not boards, whatever the board count does, and a full one is as counted', () => {
+    const previous = { fullVersion: 'v1', files: 60, canvasBoards: 30, unread: ['acme'], designSystems: { acme: '3', zeta: '1' } }
+    // 30 files that are not boards before; now 31 boards, and a small read counted 35.
+    const partial = (files: { files: number; boards: number; unread: string[] }) => JSON.parse(recordText({ ...base, full: false, previous, files: { systems: { acme: 0, zeta: 1 }, ...files } }))
+    expect(partial({ files: 35, boards: 31, unread: [] })).toMatchObject({ files: 61, canvasBoards: 31, unread: ['acme'] })
+    expect(partial({ files: 70, boards: 31, unread: ['zeta'] })).toMatchObject({ files: 70, unread: ['zeta'] })
+    expect(partial({ files: 30, boards: 28, unread: [] }).files).toBe(58)
+    expect(partial({ files: 75, boards: 31, unread: [] }).unread).toBeUndefined()
+    expect(JSON.parse(recordText({ ...base, full: true, previous })).files).toBe(40)
+  })
+
+  it('adds a design system the previous record did not list: unread when none of its files were read, counted on the floor when they were', () => {
+    const previous = { fullVersion: 'v1', files: 34, canvasBoards: 3, designSystems: { acme: '3' } }
+    const partial = (systems: Record<string, number>, unread: string[], files: number) => JSON.parse(recordText({ ...base, designSystems: { acme: '3', beta: '1' }, full: false, previous, files: { files, boards: 4, systems, unread } }))
+    // beta not read: the floor is 4 + 31 = 35, and beta makes it a lower bound.
+    expect(partial({ acme: 0, beta: 0 }, ['acme', 'beta'], 4)).toMatchObject({ files: 35, unread: ['beta'] })
+    // beta's 10 files read: they go on top of the floor.
+    const read = partial({ acme: 0, beta: 10 }, ['acme'], 14)
+    expect(read.files).toBe(45)
+    expect(read.unread).toBeUndefined()
+  })
+
+  it('keeps in unread only the design systems installed now, when the floor is used', () => {
+    const previous = { fullVersion: 'v1', files: 60, canvasBoards: 30, unread: ['acme', 'gone'], designSystems: { acme: '3', gone: '1' } }
+    const record = JSON.parse(recordText({ ...base, designSystems: { acme: '3' }, full: false, previous, files: { files: 35, boards: 31, systems: { acme: 0 }, unread: ['acme'] } }))
+    expect(record).toMatchObject({ files: 61, unread: ['acme'] })
+    const none = JSON.parse(recordText({ ...base, designSystems: {}, full: false, previous: { ...previous, unread: ['gone'] }, files: { files: 35, boards: 31, systems: {}, unread: [] } }))
+    expect(none.files).toBe(61)
+    expect(none.unread).toBeUndefined()
+  })
+
+  it('has no floor from a record with no canvasBoards, and records the unread design systems sorted, after canvasBoards', () => {
+    expect(JSON.parse(recordText({ ...base, full: false, previous: { files: 60 } })).files).toBe(40)
+    expect(JSON.parse(recordText({ ...base, full: false, previous: { artifact: 'x' } })).files).toBe(40)
+    const text = recordText({ ...base, full: true, files: { files: 40, boards: 30, systems: { acme: 0, zeta: 0 }, unread: ['zeta', 'acme'] } })
+    expect(Object.keys(JSON.parse(text))).toEqual(['canvas', 'artifact', 'version', 'fullVersion', 'files', 'canvasBoards', 'unread', 'boards', 'designSystems'])
+    expect(JSON.parse(text).unread).toEqual(['acme', 'zeta'])
+    expect(parseRecord(text).unread).toEqual(['acme', 'zeta'])
+  })
+
+  it('counts every board canvas.json lists, on any page, canvas.json, the tokens and the other files read', () => {
+    const canvas = { pages: [{ id: 'p', name: 'TCK-1' }], designSystems: [{ namespace: 'acme', version: '3' }], boards: { 'A.dc.html': { page: 'main' }, 'B.dc.html': { page: 'main' }, 'Proto.dc.html': { page: 'p' } } }
+    expect(countCanvasFiles(canvas, 'tokens.json', ['canvas.json', 'tokens.json', 'A.dc.html', 'ds/acme/button.js', 'ds/acme/tokens.json', 'logo.png'])).toEqual({ files: 8, boards: 3, systems: { acme: 2 }, unread: [] })
+    expect(countCanvasFiles(canvas, 'tokens.json', ['canvas.json', 'tokens.json'])).toEqual({ files: 5, boards: 3, systems: { acme: 0 }, unread: ['acme'] })
+    expect(countCanvasFiles({ boards: {} }, 'tokens.json', ['canvas.json', 'tokens.json', 'Stray.dc.html', 'Other.dc.html'])).toEqual({ files: 4, boards: 0, systems: {}, unread: [] })
+  })
+
+  it('reads an old record holding only the link, and leaves out a field of the wrong type', () => {
+    expect(parseRecord('{"artifact":"https://claude.ai/artifact/old"}')).toEqual({ artifact: 'https://claude.ai/artifact/old' })
+    expect(parseRecord('{"canvas":1,"files":"12","boards":[1],"designSystems":{"a":"1","b":2}}')).toEqual({ designSystems: { a: '1' } })
+    expect(() => parseRecord('{')).toThrow(/artifact\.json is not JSON/)
+    expect(() => parseRecord('[]')).toThrow(/not a JSON object/)
+  })
+
+  it("takes the design systems from canvas.json's list, skipping an entry with no string namespace or version", () => {
+    expect(designSystemsOf({ designSystems: [{ title: 'Acme', namespace: 'acme', version: '3', artifact: 'a', copiedAt: 't' }, { namespace: 'x' }, { namespace: 'y', version: 4 }, 'z'] })).toEqual({ acme: '3' })
+    expect(designSystemsOf({ boards: {} })).toEqual({})
+  })
+
+  it('lists the boards on the canvas the snapshot has no meta file for, leaving out the named ones', () => {
+    expect(unrecordedBoards(['C.dc.html', 'A.dc.html', 'B.dc.html'], ['A.dc.html'], ['B.dc.html'])).toEqual(['C.dc.html'])
+  })
+})
+
+describe('the pages, pages.json', () => {
+  it('reads each page with its flow, prefixes and keywords', () => {
+    const pages = { queue: { flow: 'Merge a pull request', prefixes: ['Queue'], keywords: ['merge queue'] }, admin: { flow: 'Run the studio' } }
+    expect(parsePages(JSON.stringify(pages))).toEqual(pages)
+  })
+
+  it.each([
+    ['{', /pages\.json is not JSON/],
+    ['[]', /not an object of pages by id/],
+    ['{"a":"flow"}', /the page "a" is not an object/],
+    ['{"a":{}}', /the page "a" has no "flow"/],
+    ['{"a":{"flow":" "}}', /the page "a" has no "flow"/],
+    ['{"a":{"flow":"f","prefixes":"Main"}}', /the page "a" has "prefixes" that is not a list of non-empty strings/],
+    ['{"a":{"flow":"f","keywords":["ok",""]}}', /the page "a" has "keywords" that is not a list of non-empty strings/],
+    ['{"a":{"flow":"f","keyword":["x"]}}', /the page "a" has "keyword", which is not a field/],
+  ])('refuses %s', (text, message) => {
+    expect(() => parsePages(text)).toThrow(message)
   })
 })
