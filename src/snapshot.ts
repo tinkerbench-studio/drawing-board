@@ -118,6 +118,15 @@ export const storyIndexOf = (map: BoardMap): StoryIndex => {
   )
 }
 
+/** What a partial refresh says about each named board it will not copy because no story shows it: the board is mapped none, or has no map entry. */
+export const notCopiedNotes = (only: readonly string[], map: BoardMap): string[] =>
+  only.flatMap(file => {
+    const entry = map[file]
+    if (entry?.story !== undefined) return []
+    const why = entry === undefined ? `has no map entry (${mapPath(file)})` : `is mapped none (${entry.none ?? 'no reason given'})`
+    return [`${file} ${why}, so its markup was not copied: map it to a story in ${mapPath(file)}, then refresh it again.`]
+  })
+
 export type Snapshot = { files: Record<string, string>; metas: BoardMeta[]; boards: BoardIndex; samples: SampleData; components: ComponentData }
 
 export const parseMeta = (text: string, name = 'a metadata file'): BoardMeta => {

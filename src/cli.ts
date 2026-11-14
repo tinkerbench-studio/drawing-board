@@ -10,7 +10,7 @@ import { compareOptions, storyShotOptions } from './pictures.ts'
 import { loadHooks } from './hooks.ts'
 import { boardNameProblems, canvasFileCount, canvasFiles, checkProblems, checkWarnings, project, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
-import { ARTIFACT_RECORD, boardsOf, buildSnapshot, designSystemsOf, metaPath, recordText, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
+import { ARTIFACT_RECORD, boardsOf, buildSnapshot, designSystemsOf, metaPath, notCopiedNotes, recordText, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
 import { canvasStatus } from './status.ts'
 
 const flag = (argv: readonly string[], name: string) => {
@@ -31,6 +31,7 @@ const snapshot = (config: Config, argv: readonly string[]) => {
   if (canvasText === undefined) throw new SnapshotError(`${from}/project/canvas.json was not read.`)
   const tokensText = read(config.tokens)
   if (tokensText === undefined) throw new SnapshotError(`${from}/project/${config.tokens} was not read.`)
+  for (const note of notCopiedNotes(only ?? [], map)) console.warn(`warning: ${note}`)
   const canvas: unknown = JSON.parse(canvasText)
   const before = new Map(p.metas().map(m => [m.file, m]))
   const snap = buildSnapshot({ canvas, tokensText, version, map, read, previous: f => before.get(f), only, tokens, existing: [...before.values()], prototype: config.prototypePages })

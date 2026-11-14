@@ -2,7 +2,7 @@
 import { existsSync, globSync, readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { basename, join } from 'node:path'
 
-import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, missingBoardWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
+import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagProblems, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import { snapshotConfigs, type Config } from './config.ts'
 import { outlineProblems, passedSampleProblems, sampleKeyProblems, themeValueProblems, tokenCssProblems } from './extra-checks.ts'
 import { componentMarkup } from './html.ts'
@@ -39,6 +39,14 @@ export const storyTitles = (config: Config): string[] => {
       if (title !== undefined) titles.add(title)
     }
   return [...titles].sort()
+}
+
+/** The text of every story file the config's globs find, by path. */
+const storyTexts = (config: Config): Record<string, string> => {
+  const stories: Record<string, string> = {}
+  const skipped = new Set(['node_modules', '.git', basename(config.storybook)])
+  for (const pattern of config.stories) for (const path of globSync(pattern, { cwd: config.root, exclude: (name: string) => skipped.has(basename(name)) })) stories[path] = readFileSync(join(config.root, path), 'utf8')
+  return stories
 }
 
 /** The canvas's tokens against the stylesheets the globs find, from the project folder (never node_modules). A glob that finds nothing is a problem, so a moved stylesheet is noticed. */
@@ -105,13 +113,14 @@ export const canvasFiles = (config: Config): { line: string; warning: boolean } 
 
 /**
  * What `check` warns about without failing: few or no free files on the canvas, boards the canvas has that the
- * snapshot does not, and design systems not at the version the project expects. Empty when there is nothing to say.
+ * snapshot does not, design systems not at the version the project expects, and a board mapped none that looks
+ * built. Empty when there is nothing to say.
  */
 export const checkWarnings = (config: Config): string[] => {
   const p = project(config)
   const record = p.record()
   const files = canvasFiles(config)
-  return [...(files.warning ? [files.line] : []), ...missingBoardWarnings(record, p.metas().map(m => m.file)), ...designSystemWarnings(config.designSystems ?? {}, record.designSystems)]
+  return [...(files.warning ? [files.line] : []), ...missingBoardWarnings(record, p.metas().map(m => m.file)), ...designSystemWarnings(config.designSystems ?? {}, record.designSystems), ...noneWarnings(p.map(), storyTexts(config))]
 }
 
 /** A board file with a meta file in the snapshots of two canvases, across every canvas that has a snapshot. */
