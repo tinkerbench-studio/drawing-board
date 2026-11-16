@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { canvasOption, CONFIG_FILE, DEFAULT_LIMITS, DEFAULTS, findConfig, LEGACY_CONFIG_FILE, loadConfig, parseConfig, snapshotConfigs } from './config.ts'
+import { DEFAULT_PICTURE_FOLDERS, DEFAULT_UI_PATHS } from './evidence.ts'
 import { TICKET_PAGE } from './snapshot.ts'
 
 const root = resolve('/project')
@@ -21,11 +22,21 @@ describe('parseConfig', () => {
       differences: resolve(root, DEFAULTS.snapshot, 'differences'),
       checks: {},
       themes: [],
+      uiPaths: [...DEFAULT_UI_PATHS],
+      pictureFolders: [...DEFAULT_PICTURE_FOLDERS],
       root,
       canvas: { id: 'main', role: 'main' },
       canvases: [{ id: 'main', role: 'main', artifact: null, snapshot: resolve(root, DEFAULTS.snapshot), prototypePages: TICKET_PAGE }],
       limits: { files: 512, headroom: 16 },
     })
+  })
+
+  it('reads the paths a person sees and the folders pictures may not be committed in, and refuses a bad one by name', () => {
+    const config = parseConfig(JSON.stringify({ uiPaths: ['^components/'], pictureFolders: ['pics/'] }), root)
+    expect(config.uiPaths).toEqual(['^components/'])
+    expect(config.pictureFolders).toEqual(['pics/'])
+    expect(() => parseConfig(JSON.stringify({ uiPaths: ['('] }), root)).toThrow(/"uiPaths" holds "\(", which is not a regular expression/)
+    expect(() => parseConfig(JSON.stringify({ pictureFolders: [] }), root)).toThrow(/"pictureFolders" must be a non-empty list/)
   })
 
   it('takes only what the file names, and leaves the rest to convention', () => {

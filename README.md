@@ -83,6 +83,8 @@ playwright-core`) and a Chromium, from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` whe
 | `drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>]` | Where the named landmarks sit on each board and on its story, measured from the top left of the screen at one width and in one font. A landmark is an element marked `data-landmark="name"` on the board and on the component the story draws (`--attr` names another attribute; `--origin` a selector to measure from, when the screen sits at an offset). Two boxes within `--tolerance` pixels (2 by default) are the same; each is reported as same, moved, resized, or on one side only. Writes `<out>/layout/layout.md`, and for every screen outside tolerance or with nothing marked a picture of each side (`<Board>-board.png`, `<Board>-story.png`). Advisory: it never sets an exit code. A board whose story cannot be drawn is listed as not measured |
 | `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). Writes `<out>/compare.md` |
 | `drawing-board page-shots [--only page,page] [--theme <theme>] [--mark <selector>] [--out <dir>]` | The pages the project's `pages()` hook returns, each in every theme (set as `data-theme` on `<html>`) and a 390 px phone in the first; with no themes, as it is and its phone. Writes `<out>/pages/<page>-<variant>.png` |
+| `drawing-board evidence-check <ticket-key> [<pr-number>] [--base <ref>]` | Whether a change that touches what a person sees (a path matching `uiPaths`, outside `docs/`) commits a picture in a `pictureFolders` folder; pictures are uploaded, never committed. Compares the branch with its merge base with `--base` (`origin/main` by default). Exits 1 naming each committed picture, 2 on a wrong call. The pull request number is accepted and not read |
+| `drawing-board upload plan <dir>` / `upload put <dir> <presigned.json>` | Putting a ticket's pictures in the tracker's storage instead of git. `plan` prints the `{ name, type }` of each picture in the folder, for the presign call; `put` PUTs each file to its presigned url with exactly the headers given and prints the `{ name }` to confirm. A session makes the presign and confirm calls itself. Exits 1 when a PUT failed |
 | `drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light\|dark]` | One story from a built Storybook, on its own page. With neither flag it writes `<out>-dark.png`, `<out>-light.png` and `<out>-phone.png` (dark, 390 px); the theme is passed as Storybook's `theme` global. `--list` prints the story ids |
 | `drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]` | Each picture in both folders, paired by name, before beside after under banners, with what changed outlined in red. The rows are lined up first, so a change that pushes a page down outlines only the change |
 
@@ -281,6 +283,8 @@ preferred name; an existing `.drawing-board` needs no change. An unknown setting
 | `tokens` | `tokens.json` | The tokens file under `project/` in the folder a refresh reads |
 | `prototypePages` | A ticket key (`NOK-12`, `proto-tck-153`) | A case-blind regular expression matched against each page's id and name; boards on a matching page are left out. A canvas in `canvases` may set its own |
 | `tokensBoard` | None | A board that shows every token by `--name` and value, checked against the tokens |
+| `uiPaths` | Stylesheets, `tokens.json`, `.storybook/`, `design/` | Regular expression sources for the paths a person sees; `evidence-check` looks for committed pictures only when a change touches one. `docs/` is never a UI path |
+| `pictureFolders` | `["docs/change-screenshots/"]` | Folders where a committed picture is refused |
 | `themes` | None | The themes `page-shots` draws, such as `["dark", "light"]` |
 | `hooks` | `<snapshot>/drawing-board.{ts,tsx,mts,mjs,js}` | The project's hook module |
 | `checks` | None (all off) | The optional generic checks `drawing-board check` runs, below |
@@ -361,12 +365,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.4.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.5.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.4.0`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.5.0`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:
@@ -431,7 +435,7 @@ to GitHub Packages.
 ## The commands a project provides
 
 The skills name steps, and `.claude/drawing-board.md` maps each step to a command, which is
-`drawing-board`'s by convention. A project names its own only where it differs (uploading a picture,
+`drawing-board`'s by convention. A project names its own only where it differs (a project's own page shots hook,
 say), and says so in that file.
 
 ## License
