@@ -20,7 +20,7 @@ snapshotted and committed is invisible to every check.
 | --- | --- |
 | How a screen looks, its structure and fixed wording | The canvas board |
 | Design tokens (colour, type, spacing, radii, shadows) | The canvas; the snapshot holds a copy and the CSS is checked against it |
-| Sample text a board and its story both show | The canvas (`data-sample` marks, lifted into the snapshot); the story reads them, never retypes them |
+| Sample text a board and its story both show | The canvas (`data-sample` marks, lifted into the snapshot); the story reads them with `canvasSample`, never retypes them |
 | What a component draws, its states and variants | The code and Storybook |
 | What the app really has (a figure, a list, a count) | The app. A board ahead of the app is recorded, never faked in a fixture |
 
@@ -76,6 +76,25 @@ with no refresh after it is unfinished work, whatever the ticket.
   outlines, samples). Publish the board and refresh. Map files that say which story shows a board
   are hand-kept; everything else is generated.
 - **Never pin the canvas version in a test.** It moves on every publish.
+- **A board's version moves only with its copy.** A refresh of an unchanged board changes nothing,
+  so refresh with `--boards` and no file holds a version that moves on every refresh.
+
+## Setup and commands
+
+The snapshot commands are the `@tinkerbench-studio/drawing-board` package, fetched from GitHub
+Packages. Running it needs `NODE_AUTH_TOKEN` set to a token with `read:packages` and nothing else,
+not a full-scope token such as `gh auth token`, since `npx --yes` runs the package with whatever
+token the environment holds. `.claude/drawing-board.md` says how the project installs it and what
+else it adds to the commands.
+
+| Step | Command | Notes |
+| --- | --- | --- |
+| Refresh the boards you changed | `drawing-board snapshot --from <folder> --version <version> --boards A.dc.html,B.dc.html` | `--tokens` when the tokens changed; `--canvas <id>` for a canvas other than main |
+| Full refresh | `drawing-board snapshot --from <folder> --version <version>` | Only to catch up or resolve a conflict |
+| Check | `drawing-board check` | Every snapshot's checks, the files in use, then warnings |
+| Rebuild the story index | `drawing-board index` | After editing or merging a map file's `story` |
+| Boards with no story, stories with no board | `drawing-board report` | |
+| Find a board | `drawing-board find <words…>` | By name, page, flow, keywords, story and tags |
 
 ## A change starting in the code
 
@@ -121,6 +140,10 @@ with no refresh after it is unfinished work, whatever the ticket.
   that looks built, `tags` of the wrong shape. Act on them in
   the change that caused them.
 - **`data-sample` goes on a leaf element**, written out, never on a `{{hole}}`.
+- **A value shown twice gets a numbered key** (`ticket.pr`, `ticket.pr2`): a key marks one value, and
+  the snapshot refuses a key used twice. Check a board you published before asking for approval.
+- **`data-sample` and `data-component` are design-only attributes**: the markup comparison leaves
+  them out, so they never reach the shipped markup.
 - **Fonts and images from the canvas (`/_blob/…`) do not load offline**, so a board rendered in CI
   falls back to system fonts.
 - **The Artifact tool is how the canvas is edited.** Do not claim you cannot edit it without
