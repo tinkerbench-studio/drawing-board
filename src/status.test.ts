@@ -33,6 +33,14 @@ describe('canvasStatus', () => {
     expect(found.lines).toEqual(['A.dc.html is on the page admin on the canvas, main in the snapshot.', "Changed on the canvas since the snapshot's copy: B.dc.html.", 'Not in the folder, so not compared: C.dc.html.'])
   })
 
+  it('reports a data-sample key used twice on a board of the folder, and nothing for a key used once', () => {
+    const twice = '<b data-sample="k">1</b><b data-sample="k">1</b>'
+    const found = status({ 'canvas.json': canvas({ 'A.dc.html': 'main', 'B.dc.html': 'main' }), 'A.dc.html': twice, 'B.dc.html': '<b data-sample="k">1</b>' }, [meta('A.dc.html', 'main', twice), meta('B.dc.html', 'main', '<b data-sample="k">1</b>')])
+    expect(found.sampleKeys).toHaveLength(1)
+    expect(found.sampleKeys[0]).toContain('A.dc.html: data-sample "k" is used more than once')
+    expect(found.lines).toEqual(found.sampleKeys)
+  })
+
   it("counts the design system's files read, and warns when few files are free", () => {
     const installed = [{ namespace: 'acme', version: '3' }]
     const files = { 'canvas.json': canvas({ 'A.dc.html': 'main' }, installed), 'tokens.json': '{}', ...Object.fromEntries(Array.from({ length: 499 }, (_, n) => [`ds/acme/f${n}.js`, ''])) }
