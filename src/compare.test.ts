@@ -15,6 +15,18 @@ describe('outline', () => {
       { kind: 'item', text: 'Paris' },
     ])
   })
+
+  it('joins an element\'s parts with a space, but none where a slash meets the join', () => {
+    const html = '<button><span class="owner">acme</span>/web-app</button><a href="/r"><span>acme</span><span>/api</span></a><a href="/s"><span>acme/</span><span>tools</span></a><button><span>Build</span><span>skipped</span></button><a href="/b">tick<span>·</span>it</a><a href="/c"><span>a</span> / <span>b</span></a>'
+    expect(outline(html)).toEqual([
+      { kind: 'button', text: 'acme/web-app' },
+      { kind: 'link', text: 'acme/api' },
+      { kind: 'link', text: 'acme/tools' },
+      { kind: 'button', text: 'Build skipped' },
+      { kind: 'link', text: 'tick · it' },
+      { kind: 'link', text: 'a / b' },
+    ])
+  })
 })
 
 describe('comparePage', () => {

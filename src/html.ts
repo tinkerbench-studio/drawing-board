@@ -56,7 +56,15 @@ export type OutlineItem = { kind: 'heading' | 'button' | 'link' | 'label' | 'ite
 /** Text that is a value, not wording: a digit, an address, a currency sign, a placeholder, a quotation, or a paragraph. */
 export const isValue = (text: string): boolean => /[\d@£$€"“”]|\{\{/.test(text) || text.length > 90
 
-const textOf = (node: Node): string => ((node.nodeName === '#text' ? node.value : (node.childNodes ?? []).map(textOf).join(' ')) ?? '').replace(/\s+/g, ' ').trim()
+/**
+ * The texts of an element's children joined with a space, as a flex row or a chip beside its label shows them, but
+ * with none where a slash or a space already meets the join: an `owner/name` split across elements, so a page can
+ * cut the owner and keep the name, still reads as one name.
+ */
+const joinTexts = (pieces: string[]): string => pieces.reduce((text, piece) => (text === '' || piece === '' || /[\s/]$/.test(text) || /^[\s/]/.test(piece) ? text + piece : `${text} ${piece}`), '')
+
+/** An element's text: its text nodes (their own spaces kept) and its children's texts, joined, with whitespace collapsed. */
+const textOf = (node: Node): string => (node.nodeName === '#text' ? (node.value ?? '').replace(/\s+/g, ' ') : joinTexts((node.childNodes ?? []).map(textOf)).replace(/\s+/g, ' ').trim())
 
 /** The fixed wording and structure of a screen, in document order: headings, buttons, links, field labels, column heads and list items, leaving values out. */
 export const outline = (html: string): OutlineItem[] => {
