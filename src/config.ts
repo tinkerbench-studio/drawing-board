@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { SnapshotError } from './sample.ts'
+import { DEFAULT_PICTURE_FOLDERS, DEFAULT_UI_PATHS } from './evidence.ts'
 import { ARTIFACT_RECORD, parseRecord, TICKET_PAGE } from './snapshot.ts'
 
 /** The preferred name of a project's config file. */
@@ -67,6 +68,10 @@ export type Config = {
   checks: Checks
   /** The themes `page-shots` draws each page in, set as `data-theme` on `<html>`; none draws the page as it is. */
   themes: string[]
+  /** Regular expression sources for the paths a person sees; `evidence-check` asks for pictures when a change touches one (the `uiPaths` setting). */
+  uiPaths: string[]
+  /** Folders (from the project folder, ending in `/`) where a committed picture is refused: pictures are uploaded (the `pictureFolders` setting). */
+  pictureFolders: string[]
   /** The project's hook module, absolute, when set; else found by convention in the snapshot folder (hooks.ts). */
   hooks?: string
   /** The project folder: where `.drawing-board` is, or the working folder when there is none. */
@@ -81,7 +86,7 @@ export type Config = {
   limits: Limits
 }
 
-const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks', 'canvases', 'designSystems', 'limits'])
+const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks', 'canvases', 'designSystems', 'limits', 'uiPaths', 'pictureFolders'])
 const CANVAS_FIELDS = new Set(['id', 'role', 'artifact', 'snapshot', 'prototypePages'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -154,6 +159,13 @@ const parseLimits = (value: unknown, name: string): Limits => {
   return limits
 }
 
+/** A list of non-empty strings, or the default when the setting is left out. */
+const stringList = (value: unknown, fallback: readonly string[], setting: string, name: string): string[] => {
+  if (value === undefined) return [...fallback]
+  if (!Array.isArray(value) || value.length === 0 || !value.every(v => typeof v === 'string' && v !== '')) throw new SnapshotError(`${name}: "${setting}" must be a non-empty list of strings.`)
+  return value as string[]
+}
+
 const parseChecks = (value: unknown, name: string): Checks => {
   if (value === undefined) return {}
   if (!isRecord(value)) throw new SnapshotError(`${name}: "checks" must be an object naming the checks to run (${[...CHECK_FLAGS, 'tokensCss'].join(', ')}).`)
@@ -218,6 +230,15 @@ export const parseConfig = (text: string, root: string, name: string = CONFIG_FI
   const tokensBoard = field('tokensBoard')
   const hooks = field('hooks')
   const designSystems = parseDesignSystems(raw.designSystems, name)
+  const uiPaths = stringList(raw.uiPaths, DEFAULT_UI_PATHS, 'uiPaths', name)
+  for (const source of uiPaths) {
+    try {
+      new RegExp(source)
+    } catch {
+      throw new SnapshotError(`${name}: "uiPaths" holds "${source}", which is not a regular expression.`)
+    }
+  }
+  const pictureFolders = stringList(raw.pictureFolders, DEFAULT_PICTURE_FOLDERS, 'pictureFolders', name)
   const config = {
     artifact: main.artifact,
     snapshot,
@@ -230,6 +251,8 @@ export const parseConfig = (text: string, root: string, name: string = CONFIG_FI
     differences: resolve(root, field('differences') ?? join(snapshot, 'differences')),
     checks,
     themes: themes as string[],
+    uiPaths,
+    pictureFolders,
     ...(hooks === undefined ? {} : { hooks: resolve(root, hooks) }),
     ...(designSystems === undefined ? {} : { designSystems }),
     root,

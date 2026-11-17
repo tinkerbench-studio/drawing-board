@@ -7,12 +7,14 @@ import { dirname, join } from 'node:path'
 import { canvasOption, CONFIG_FILE, LEGACY_CONFIG_FILE, loadConfig, snapshotConfigs, type Config } from './config.ts'
 import { findBoards } from './find.ts'
 import { compareOptions, storyShotOptions } from './pictures.ts'
+import { evidenceCheck } from './evidence.ts'
 import { loadHooks } from './hooks.ts'
 import { boardNameProblems, canvasFiles, checkProblems, checkWarnings, project, readFiles, storyTitles } from './project.ts'
 import { SnapshotError } from './sample.ts'
 import { DS_ASSUMPTION, unreadBound } from './check.ts'
 import { ARTIFACT_RECORD, boardsOf, buildSnapshot, countCanvasFiles, designSystemsOf, metaPath, notCopiedNotes, recordOf, refreshedNames, screensOf, snapshotOptions, STORY_INDEX, storyIndexOf, unrecordedBoards } from './snapshot.ts'
 import { canvasStatus } from './status.ts'
+import { uploadCommand } from './upload.ts'
 
 const flag = (argv: readonly string[], name: string) => {
   const at = argv.indexOf(`--${name}`)
@@ -143,6 +145,8 @@ const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <fil
        drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>] [--out <dir>]
        drawing-board compare [--storybook <dir>]
        drawing-board page-shots [--out <dir>] [--theme <theme>] [--only page,page] [--mark <selector>]
+       drawing-board evidence-check <ticket-key> [<pr-number>] [--base <ref>]
+       drawing-board upload plan <dir> | put <dir> <presigned.json>
        drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list
        drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]
 Settings come from the nearest ${CONFIG_FILE} (or ${LEGACY_CONFIG_FILE}), every one defaulted (see the README).`
@@ -177,6 +181,8 @@ const main = async (argv: readonly string[]) => {
       return
     }
   }
+  if (command === 'evidence-check') return void (process.exitCode = evidenceCheck(config(), rest))
+  if (command === 'upload') return void (process.exitCode = await uploadCommand(rest))
   if (command === 'snapshot') return snapshot(config(), argv)
   if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv))
   if (command === 'status') return status(config(), argv)
