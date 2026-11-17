@@ -3,6 +3,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
+import type { CompareVerdicts } from './compare.ts'
 import { SnapshotError } from './sample.ts'
 import { ARTIFACT_RECORD, parseRecord, TICKET_PAGE } from './snapshot.ts'
 
@@ -65,6 +66,8 @@ export type Config = {
   differences: string
   /** The optional generic checks turned on (the `checks` setting); none by default. */
   checks: Checks
+  /** What `compare` adds to the set difference (the `compare` setting): `order` and `closestState`; none by default. */
+  compare: CompareVerdicts
   /** The themes `page-shots` draws each page in, set as `data-theme` on `<html>`; none draws the page as it is. */
   themes: string[]
   /** The project's hook module, absolute, when set; else found by convention in the snapshot folder (hooks.ts). */
@@ -81,7 +84,7 @@ export type Config = {
   limits: Limits
 }
 
-const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks', 'canvases', 'designSystems', 'limits'])
+const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks', 'compare', 'canvases', 'designSystems', 'limits'])
 const CANVAS_FIELDS = new Set(['id', 'role', 'artifact', 'snapshot', 'prototypePages'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -154,6 +157,18 @@ const parseLimits = (value: unknown, name: string): Limits => {
   return limits
 }
 
+const parseCompare = (value: unknown, name: string): CompareVerdicts => {
+  if (value === undefined) return {}
+  if (!isRecord(value)) throw new SnapshotError(`${name}: "compare" must be an object naming what compare adds (order, closestState).`)
+  const options: CompareVerdicts = {}
+  for (const [key, flag] of Object.entries(value)) {
+    if (key !== 'order' && key !== 'closestState') throw new SnapshotError(`${name}: "compare.${key}" is not a compare option (order, closestState).`)
+    if (typeof flag !== 'boolean') throw new SnapshotError(`${name}: "compare.${key}" must be true or false.`)
+    if (flag) options[key] = true
+  }
+  return options
+}
+
 const parseChecks = (value: unknown, name: string): Checks => {
   if (value === undefined) return {}
   if (!isRecord(value)) throw new SnapshotError(`${name}: "checks" must be an object naming the checks to run (${[...CHECK_FLAGS, 'tokensCss'].join(', ')}).`)
@@ -198,6 +213,7 @@ export const parseConfig = (text: string, root: string, name: string = CONFIG_FI
   const themes = raw.themes ?? []
   if (!Array.isArray(themes) || !themes.every(s => typeof s === 'string' && /^[a-z][a-z0-9-]*$/.test(s))) throw new SnapshotError(`${name}: "themes" must be a list of theme names, such as ["dark", "light"].`)
   const checks = parseChecks(raw.checks, name)
+  const compare = parseCompare(raw.compare, name)
   if (raw.canvases !== undefined) for (const key of ['artifact', 'snapshot']) if (raw[key] !== undefined) throw new SnapshotError(`${name}: "${key}" goes on each canvas in "canvases", not at the top level: move it into the canvas it belongs to.`)
   const settings: CanvasSetting[] =
     raw.canvases === undefined
@@ -229,6 +245,7 @@ export const parseConfig = (text: string, root: string, name: string = CONFIG_FI
     out: resolve(root, field('out') ?? DEFAULTS.out),
     differences: resolve(root, field('differences') ?? join(snapshot, 'differences')),
     checks,
+    compare,
     themes: themes as string[],
     ...(hooks === undefined ? {} : { hooks: resolve(root, hooks) }),
     ...(designSystems === undefined ? {} : { designSystems }),

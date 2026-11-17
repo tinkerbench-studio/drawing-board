@@ -81,7 +81,7 @@ playwright-core`) and a Chromium, from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` whe
 | --- | --- |
 | `drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light\|dark]` | The picture a UX change carries: the board's committed copy beside its story from the built Storybook, at one width, each under a banner naming where it came from (DESIGN CANVAS: the board, canvas link and copy version; STORYBOOK: the story, its id, the commit), every difference boxed on both sides with the same number in its own colour, and a table. Writes `<out>/shots/<Board>-side-by-side.png` and `.md`. With no `--board`, every board a story shows. `board-shot` is its earlier name and still works. In code: `boardShots` from `'@tinkerbench-studio/drawing-board/pictures'` (see "The functions behind the commands" below). The story is the one in the built Storybook unless the project's `storyPage()` hook (below) draws it. The differences come from `<differences>/<Board>.json` (the `differences` setting; `<snapshot>/differences/` unless set) when there is one, else from the comparison below (only what is visible; the table says so) |
 | `drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>]` | Where the named landmarks sit on each board and on its story, measured from the top left of the screen at one width and in one font. A landmark is an element marked `data-landmark="name"` on the board and on the component the story draws (`--attr` names another attribute; `--origin` a selector to measure from, when the screen sits at an offset). Two boxes within `--tolerance` pixels (2 by default) are the same; each is reported as same, moved, resized, or on one side only. Writes `<out>/layout/layout.md`, and for every screen outside tolerance or with nothing marked a picture of each side (`<Board>-board.png`, `<Board>-story.png`). Advisory: it never sets an exit code. A board whose story cannot be drawn is listed as not measured |
-| `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). An element's text is its parts joined with a space, but none where a `/` meets the join, so an `owner/name` split across elements reads as one name. Writes `<out>/compare.md` |
+| `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). An element's text is its parts joined with a space, but none where a `/` meets the join, so an `owner/name` split across elements reads as one name. With the `compare` setting's options on, it also says whether the shared texts come in the same order and which state of the story is closest (below). Writes `<out>/compare.md` |
 | `drawing-board page-shots [--only page,page] [--theme <theme>] [--mark <selector>] [--out <dir>]` | The pages the project's `pages()` hook returns, each in every theme (set as `data-theme` on `<html>`) and a 390 px phone in the first; with no themes, as it is and its phone. Writes `<out>/pages/<page>-<variant>.png` |
 | `drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light\|dark]` | One story from a built Storybook, on its own page. With neither flag it writes `<out>-dark.png`, `<out>-light.png` and `<out>-phone.png` (dark, 390 px); the theme is passed as Storybook's `theme` global. `--list` prints the story ids |
 | `drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]` | Each picture in both folders, paired by name, before beside after under banners, with what changed outlined in red. The rows are lined up first, so a change that pushes a page down outlines only the change |
@@ -283,7 +283,23 @@ preferred name; an existing `.drawing-board` needs no change. An unknown setting
 | `tokensBoard` | None | A board that shows every token by `--name` and value, checked against the tokens |
 | `themes` | None | The themes `page-shots` draws, such as `["dark", "light"]` |
 | `hooks` | `<snapshot>/drawing-board.{ts,tsx,mts,mjs,js}` | The project's hook module |
+| `compare` | None (both off) | What `drawing-board compare` adds to the set difference: `{ "order": true, "closestState": true }`, below |
 | `checks` | None (all off) | The optional generic checks `drawing-board check` runs, below |
+
+### The `compare` setting: order and closest state
+
+`drawing-board compare` lists the wording only on each side. Two options, each off until named, add Nookivia's verdicts
+to each board's section; with both off the report is exactly what it was.
+
+- `order`: whether the texts a board and its story share come in the same order, by longest common subsequence. The
+  report says `same`, or how many shared texts come in a different order, or `not judged` when a side has fewer than 3 items.
+- `closestState`: compares the board with every state of its story (every story with that title, not only the one a
+  map entry's `page` names) and reads the lists against the closest state, the one that keeps most of the board's texts in
+  its order, which the report names. A board that shares less than 25% of its items with even that state is reported
+  as unrelated, so the mapping is probably wrong; a board with fewer than 3 items is not judged.
+
+The same verdicts are exported for a project that draws its own stories: `comparePage(…, decided, options)`,
+`comparePages(…, options)` and `compareStates` (board against each state's markup), with `UNRELATED_BELOW` and `MIN_ITEMS`.
 
 ### Optional checks: the `checks` setting
 
@@ -361,12 +377,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.5.1 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.6.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.5.1`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.6.0`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:
