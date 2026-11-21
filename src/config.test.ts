@@ -25,7 +25,14 @@ describe('parseConfig', () => {
       canvas: { id: 'main', role: 'main' },
       canvases: [{ id: 'main', role: 'main', artifact: null, snapshot: resolve(root, DEFAULTS.snapshot), prototypePages: TICKET_PAGE }],
       limits: { files: 512, headroom: 16 },
+      chromium: [],
     })
+  })
+
+  it('takes "chromium" as one path or a list, and refuses anything else', () => {
+    expect(parseConfig(JSON.stringify({ chromium: '/usr/bin/chromium' }), root).chromium).toEqual(['/usr/bin/chromium'])
+    expect(parseConfig(JSON.stringify({ chromium: ['tools/chrome', '/opt/chrome'] }), root).chromium).toEqual(['tools/chrome', '/opt/chrome'])
+    for (const bad of [3, [''], ['/a', 2], {}]) expect(() => parseConfig(JSON.stringify({ chromium: bad }), root)).toThrow(/"chromium" must be a path to a Chromium executable, or a list of them/)
   })
 
   it('takes only what the file names, and leaves the rest to convention', () => {
