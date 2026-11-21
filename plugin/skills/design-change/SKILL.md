@@ -26,12 +26,14 @@ changes to it start there.
 
 1. **Make a prototype page for the ticket**, named by its key (`NOK-123`, `TCK-45`). One page per
    ticket, so two tickets' prototypes never sit on the same page. When the project has a
-   `prototypes` canvas, the page goes there; otherwise on the main canvas, as before. Prototype pages are never read
-   into the snapshot. A project whose snapshot cannot yet skip per-ticket pages says so in
+   `prototypes` canvas, the page goes there; otherwise on the main canvas, as before. Prototype pages
+   and the prototypes canvas are never snapshotted. A project whose snapshot cannot yet skip per-ticket pages says so in
    `.claude/drawing-board.md` and names the one page to use instead; follow that, and prefix each
    copy with the ticket key so two tickets' copies stay apart.
 2. **Copy, do not move.** Copy each board you will change onto it as a new file
-   (`Proto<Board>.dc.html`), the whole screen so the change is seen in context. A new screen is
+   named `<Board>.<KEY>.dc.html` (for example `TrainingCase.TCK-45.dc.html`), the whole screen so the
+   change is seen in context. A copy is needed because a `<dc-import>` reaches only its own canvas,
+   so a prototype cannot import a main board. A new screen is
    drawn there from the library's components and tokens. When a design system is installed on the
    canvas, mount its components (`<x-import component-from-global-scope="…">`) rather than copying
    their markup, so the board follows the system.
@@ -39,7 +41,8 @@ changes to it start there.
    phone view of each. Where there is a real choice, show each option beside the other and say
    what each costs.
 4. **Mark sample data now.** Every value a board displays (a name, a figure, a date, a row's text)
-   is marked `data-sample="group.name"` on a leaf element, so the agreed board moves onto the main
+   is marked `data-sample="group.name"` on a leaf element (a value shown twice gets a numbered key,
+   `group.name2`), so the agreed board moves onto the main
    page without rework and the story can read the same values. Fixed wording is not marked.
 5. **Look before you show.** Render the prototype and screenshot it. Measure the tallest state and
    set the board's height to it, so nothing is cut off. Prefix a prototype's own CSS classes so they
@@ -51,7 +54,8 @@ changes to it start there.
    Move the agreed boards onto their flow's page (`flow-pages`), delete the prototype page, publish
    only the files you changed, and refresh the snapshot for those boards (`canvas-sync`). With a
    `prototypes` canvas, fold-in copies the agreed boards to the main canvas and removes the prototype
-   page from the prototypes canvas in the same change. Map each new board to its story, or say it is not
+   page from the prototypes canvas in the same change. Remove only your own ticket's copies and the
+   notes that pointed to them; another ticket's stay as they are. Map each new board to its story, or say it is not
    built yet. Record the folded boards and the canvas version on the ticket. A design-only ticket
    still refreshes the snapshot in its own pull request; it does not leave that to the build.
 9. **Then the code.** Build the agreed board as a component or page in Storybook from the library's
