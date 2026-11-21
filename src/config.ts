@@ -82,9 +82,11 @@ export type Config = {
   designSystems?: Record<string, string>
   /** The canvas's file limit and the free files below which `check` warns (the `limits` setting). */
   limits: Limits
+  /** Chromium executables the picture commands try, in order, before playwright-core's own and the known places (the `chromium` setting; relative to `root`). None by default. */
+  chromium: string[]
 }
 
-const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks', 'compare', 'canvases', 'designSystems', 'limits'])
+const KNOWN = new Set(['artifact', 'snapshot', 'stories', 'tokens', 'prototypePages', 'tokensBoard', 'storybook', 'out', 'differences', 'themes', 'hooks', 'checks', 'compare', 'canvases', 'designSystems', 'limits', 'chromium'])
 const CANVAS_FIELDS = new Set(['id', 'role', 'artifact', 'snapshot', 'prototypePages'])
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -169,6 +171,13 @@ const parseCompare = (value: unknown, name: string): CompareVerdicts => {
   return options
 }
 
+const parseChromium = (value: unknown, name: string): string[] => {
+  if (value === undefined) return []
+  const paths = typeof value === 'string' ? [value] : value
+  if (!Array.isArray(paths) || !paths.every(p => typeof p === 'string' && p !== '')) throw new SnapshotError(`${name}: "chromium" must be a path to a Chromium executable, or a list of them tried in order.`)
+  return paths as string[]
+}
+
 const parseChecks = (value: unknown, name: string): Checks => {
   if (value === undefined) return {}
   if (!isRecord(value)) throw new SnapshotError(`${name}: "checks" must be an object naming the checks to run (${[...CHECK_FLAGS, 'tokensCss'].join(', ')}).`)
@@ -249,6 +258,7 @@ export const parseConfig = (text: string, root: string, name: string = CONFIG_FI
     themes: themes as string[],
     ...(hooks === undefined ? {} : { hooks: resolve(root, hooks) }),
     ...(designSystems === undefined ? {} : { designSystems }),
+    chromium: parseChromium(raw.chromium, name),
     root,
   }
   const loaded = withFields(config, main, canvases, parseLimits(raw.limits, name))

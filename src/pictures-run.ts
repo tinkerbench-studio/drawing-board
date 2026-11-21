@@ -1,27 +1,73 @@
 // The browser half of the pictures: `drawing-board story-shot` and `drawing-board compare-pictures`. They need
-// playwright-core (an optional peer dependency) and a Chromium, from PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH when set.
+// playwright-core (an optional peer dependency) and a Chromium, found as chromium.ts says.
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 
-import { changeNote, compareFile, CONTENT_TYPES, pairPictures, storyIds, storyUrl, storyVariants, type CompareOptions, type StoryShotOptions } from './pictures.ts'
+import type { Config } from './config.ts'
+import { chosenChromium, fallbackChromium, noChromium, thisMachine, type ChromiumChoice, type Machine } from './chromium.ts'
+import { changeNote, compareFile, CONTENT_TYPES, pairPictures, storybookBase, storyIds, storyUrl, storyVariants, type CompareOptions, type StoryShotOptions } from './pictures.ts'
 
-export const launch = async () => {
-  let playwright: typeof import('playwright-core')
+/** What `launch` is told about the project: its `chromium` setting and the folder its relative paths start from. */
+export type LaunchOptions = { chromium?: readonly string[]; root?: string; machine?: Machine }
+
+/** The launch options a project's config gives: its `chromium` setting, from its folder. */
+export const launchOptions = (config: Pick<Config, 'chromium' | 'root'>): LaunchOptions => ({ chromium: config.chromium, root: config.root })
+
+/** playwright-core, or a refusal saying how to install it. */
+const playwrightCore = async (): Promise<typeof import('playwright-core')> => {
   try {
-    playwright = await import('playwright-core')
+    return await import('playwright-core')
   } catch {
-    throw new Error('Pictures need playwright-core: npm install --save-dev playwright-core, and a Chromium (PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH).')
+    throw new Error('Pictures need playwright-core: npm install --save-dev playwright-core, and a Chromium (see "Which Chromium" in the drawing-board README).')
   }
-  const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
-  return playwright.chromium.launch(executablePath === undefined ? {} : { executablePath })
+}
+
+/** playwright-core's refusal when its own browser build is not installed. */
+const notInstalled = (error: unknown) => /Executable doesn't exist|browserType\.launch: .*(not found|ENOENT)/.test((error as Error).message ?? '')
+
+/**
+ * Which Chromium `launch` would start, without starting one: `path` undefined is playwright-core's own browser. Throws
+ * the refusal `launch` would give when none is found. For `drawing-board browser`.
+ */
+export const whichChromium = async (options: LaunchOptions = {}): Promise<ChromiumChoice> => {
+  const machine = options.machine ?? thisMachine()
+  const root = options.root ?? process.cwd()
+  const chosen = chosenChromium(machine, options.chromium, root)
+  if (chosen !== undefined) return chosen
+  const own = (await playwrightCore()).chromium.executablePath()
+  if (own !== '' && machine.exists(own)) return { source: 'playwright-core' }
+  const fallback = fallbackChromium(machine)
+  if (fallback !== undefined) return fallback
+  throw new Error(noChromium(machine, options.chromium ?? [], root, own))
+}
+
+/** Starts Chromium, found as "Which Chromium" in the README says: the variable, the setting, playwright-core's own, then the known places. */
+export const launch = async (options: LaunchOptions = {}) => {
+  const playwright = await playwrightCore()
+  const machine = options.machine ?? thisMachine()
+  const root = options.root ?? process.cwd()
+  const chosen = chosenChromium(machine, options.chromium, root)
+  if (chosen !== undefined) return playwright.chromium.launch({ executablePath: chosen.path! })
+  try {
+    return await playwright.chromium.launch()
+  } catch (error) {
+    if (!notInstalled(error)) throw error
+    const fallback = fallbackChromium(machine)
+    if (fallback === undefined) throw new Error(noChromium(machine, options.chromium ?? [], root, playwright.chromium.executablePath()))
+    return playwright.chromium.launch({ executablePath: fallback.path! })
+  }
 }
 
 /** Serves a folder on a free local port, refusing any path outside it; `pages` are HTML documents served from memory by path (`/story.html`), ahead of the folder. */
 export const serve = (root: string, pages: Readonly<Record<string, string>> = {}): Promise<{ server: Server; base: string }> => {
+  // A Storybook built for a path under a site (Vite's base, such as /storybook/) asks for its files there: serve them.
+  const iframe = join(root, 'iframe.html')
+  const prefix = existsSync(iframe) ? storybookBase(readFileSync(iframe, 'utf8')) : '/'
   const server = createServer((req, res) => {
-    const url = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)
+    const asked = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)
+    const url = prefix !== '/' && asked.startsWith(prefix) ? asked.slice(prefix.length - 1) : asked
     if (url in pages) return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(pages[url])
     const path = resolve(join(root, url))
     if (path !== root && !path.startsWith(root + sep)) return void res.writeHead(403).end()
@@ -32,12 +78,12 @@ export const serve = (root: string, pages: Readonly<Record<string, string>> = {}
 }
 
 /** Pictures of one story from a built Storybook, in each variant; or, with --list, the story ids. */
-export const storyShot = async (options: StoryShotOptions): Promise<void> => {
+export const storyShot = async (options: StoryShotOptions, browserOptions: LaunchOptions = {}): Promise<void> => {
   const dir = resolve(options.dir)
   if (!existsSync(join(dir, 'iframe.html'))) throw new Error(`${dir} is not a built Storybook (no iframe.html): build Storybook first`)
   if (options.list) return void console.log(storyIds(JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8'))).join('\n'))
   const { server, base } = await serve(dir)
-  const browser = await launch()
+  const browser = await launch(browserOptions)
   try {
     for (const v of storyVariants(options, resolve(options.out!))) {
       const page = await browser.newPage({ viewport: { width: v.width, height: 800 } })
@@ -143,14 +189,14 @@ const outlineChanges = async ([beforeUrl, afterUrl, fromX]: [string, string, num
 }
 
 /** Each picture in both folders, before beside after under banners, with what changed outlined; returns the regions found per picture. */
-export const comparePictures = async (options: CompareOptions): Promise<Record<string, number>> => {
+export const comparePictures = async (options: CompareOptions, browserOptions: LaunchOptions = {}): Promise<Record<string, number>> => {
   const [before, after, out] = [options.before, options.after, options.out].map(p => resolve(p)) as [string, string, string]
   const image = (path: string) => `data:image/png;base64,${readFileSync(path).toString('base64')}`
   const banner = (colour: string, text: string) => `<div style="background:${colour};color:#fff;font:600 13px system-ui;padding:6px 10px">${text}</div>`
   const column = (colour: string, text: string, url: string) => `<div style="width:1100px;flex:none">${banner(colour, text)}<img style="max-width:100%;display:block;border:1px solid #ccc" src="${url}"></div>`
   mkdirSync(out, { recursive: true })
   const found: Record<string, number> = {}
-  const browser = await launch()
+  const browser = await launch(browserOptions)
   try {
     for (const name of pairPictures(readdirSync(before), readdirSync(after))) {
       const picture = name.replace(/\.png$/, '')

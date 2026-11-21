@@ -145,12 +145,19 @@ const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <fil
        drawing-board page-shots [--out <dir>] [--theme <theme>] [--only page,page] [--mark <selector>]
        drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list
        drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]
+       drawing-board browser   (which Chromium the picture commands start, and why)
 Settings come from the nearest ${CONFIG_FILE} (or ${LEGACY_CONFIG_FILE}), every one defaulted (see the README).`
 
 /** The browser commands load the browser code only when they run, so the snapshot commands never need playwright-core. */
 const browserCommand = async (command: string, argv: readonly string[], config: () => Config) => {
-  if (command === 'story-shot') return (await import('./pictures-run.ts')).storyShot(storyShotOptions(argv))
-  if (command === 'compare-pictures') return void (await (await import('./pictures-run.ts')).comparePictures(compareOptions(argv)))
+  if (command === 'story-shot' || command === 'compare-pictures' || command === 'browser') {
+    const run = await import('./pictures-run.ts')
+    const options = run.launchOptions(config())
+    if (command === 'story-shot') return run.storyShot(storyShotOptions(argv), options)
+    if (command === 'compare-pictures') return void (await run.comparePictures(compareOptions(argv), options))
+    const chosen = await run.whichChromium(options)
+    return void console.log(`${chosen.path ?? "playwright-core's own browser"} (${chosen.source})`)
+  }
   if (command === 'layout') {
     const run = await import('./layout-run.ts')
     return void console.log((await run.layout(config(), run.layoutOptions(argv))).report)
@@ -163,7 +170,7 @@ const browserCommand = async (command: string, argv: readonly string[], config: 
   if (failed.length > 0) throw new Error(`Not made:\n${failed.map(f => `- ${f}`).join('\n')}`)
 }
 
-const BROWSER_COMMANDS = new Set(['story-shot', 'compare-pictures', 'annotate', 'board-shot', 'layout', 'compare', 'page-shots'])
+const BROWSER_COMMANDS = new Set(['browser', 'story-shot', 'compare-pictures', 'annotate', 'board-shot', 'layout', 'compare', 'page-shots'])
 
 const main = async (argv: readonly string[]) => {
   const [command = '', ...rest] = argv
