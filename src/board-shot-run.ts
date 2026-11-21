@@ -9,7 +9,7 @@ import { BoardShotError, composeHtml, designBanner, differencesFile, legendMarkd
 import { comparePage, comparisonReport, type PageComparison } from './compare.ts'
 import type { Config } from './config.ts'
 import { HOOK_NAMES, loadHooks } from './hooks.ts'
-import { launch, serve } from './pictures-run.ts'
+import { launch, launchOptions, serve } from './pictures-run.ts'
 import { storyUrl } from './pictures.ts'
 import { project } from './project.ts'
 import { openStorySide, pickStory, storybookEntries, type IndexEntry } from './story-side.ts'
@@ -119,7 +119,7 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
 
   const boards = await serve(boardsDir)
   const story = await openStorySide(config, hooks, board, options)
-  const browser = await launch()
+  const browser = await launch(launchOptions(config))
   try {
     const boardPage = await open(browser, `${boards.base}/${board}`, width)
     const storyPage = await open(browser, story.url, width, story.ready)
@@ -176,7 +176,7 @@ export const compareStories = async (config: Config, storybookDir = config.story
   const boards = await serve(canvas.file('boards'))
   let built: Awaited<ReturnType<typeof serve>> | undefined
   let entries: IndexEntry[] | undefined
-  const browser = await launch()
+  const browser = await launch(launchOptions(config))
   const pages: PageComparison[] = []
   const missing: string[] = []
   try {
@@ -275,7 +275,7 @@ export const pageShots = async (config: Config, options: PageShotsOptions): Prom
   const out = resolve(options.out ?? join(config.out, 'pages'))
   mkdirSync(out, { recursive: true })
   const written: string[] = []
-  const browser = await launch()
+  const browser = await launch(launchOptions(config))
   try {
     for (const [name, shot] of pages) {
       const page = typeof shot === 'string' ? { html: shot } : shot

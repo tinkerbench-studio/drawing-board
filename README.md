@@ -75,7 +75,8 @@ of several (below). Without it, `check` and `find` read every canvas that has a 
 the main canvas.
 
 The browser commands need `playwright-core` (an optional peer dependency: `npm install --save-dev
-playwright-core`) and a Chromium, from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when set:
+playwright-core`) and a Chromium, found as "Which Chromium" (below) says. `drawing-board browser`
+prints the one they would start and why:
 
 | Command | What it does |
 | --- | --- |
@@ -83,8 +84,52 @@ playwright-core`) and a Chromium, from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` whe
 | `drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>]` | Where the named landmarks sit on each board and on its story, measured from the top left of the screen at one width and in one font. A landmark is an element marked `data-landmark="name"` on the board and on the component the story draws (`--attr` names another attribute; `--origin` a selector to measure from, when the screen sits at an offset). Two boxes within `--tolerance` pixels (2 by default) are the same; each is reported as same, moved, resized, or on one side only. Writes `<out>/layout/layout.md`, and for every screen outside tolerance or with nothing marked a picture of each side (`<Board>-board.png`, `<Board>-story.png`). Advisory: it never sets an exit code. A board whose story cannot be drawn is listed as not measured |
 | `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). An element's text is its parts joined with a space, but none where a `/` meets the join, so an `owner/name` split across elements reads as one name. The story's markup comes from the project's `storyMarkup()` hook (below) when it returns some, else from the built Storybook, which is then read only if a story needs it. Writes `<out>/compare.md` |
 | `drawing-board page-shots [--only page,page] [--theme <theme>] [--mark <selector>] [--out <dir>]` | The pages the project's `pages()` hook returns, each in every theme (set as `data-theme` on `<html>`) and a 390 px phone in the first; with no themes, as it is and its phone. Writes `<out>/pages/<page>-<variant>.png` |
+| `drawing-board browser` | The Chromium the commands below would start and where it was found: the variable, the `chromium` setting, playwright-core's own or a known place ("Which Chromium", below). Fails, listing every path it looked in, when there is none |
 | `drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light\|dark]` | One story from a built Storybook, on its own page. With neither flag it writes `<out>-dark.png`, `<out>-light.png` and `<out>-phone.png` (dark, 390 px); the theme is passed as Storybook's `theme` global. `--list` prints the story ids |
 | `drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]` | Each picture in both folders, paired by name, before beside after under banners, with what changed outlined in red. The rows are lined up first, so a change that pushes a page down outlines only the change |
+
+### Which Chromium
+
+playwright-core starts only the browser build its own version was made with, so a project that pins
+a different playwright-core than the machine's installed browsers could not take a picture. A Claude
+Code cloud session, for one, ships Playwright's browsers for its own version in `/opt/pw-browsers`.
+So the browser commands look for a Chromium in this order and start the first they find:
+
+1. **`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`**, when set: that file. A path with no file there is
+   refused, naming the variable, rather than quietly starting another browser.
+2. **The project's `chromium` setting** in `drawing-board.config.json`: the first of its paths that
+   exists (a relative path is from the project folder). Paths that do not exist on this machine are
+   skipped, so one list can name a browser for each machine the project runs on.
+3. **playwright-core's own browser**, when it is installed (`npx playwright-core install chromium`).
+4. **The known places**, the first that exists:
+
+   | Path | What it is |
+   | --- | --- |
+   | `/opt/pw-browsers/chromium` | A Claude Code cloud session's Chromium |
+   | `/usr/bin/chromium`, `/usr/bin/chromium-browser` | A Linux package's Chromium |
+   | `/usr/bin/google-chrome`, `/usr/bin/google-chrome-stable` | Google Chrome on Linux (and GitHub's Ubuntu runners) |
+   | `/Applications/Chromium.app/Contents/MacOS/Chromium` | Chromium on macOS |
+   | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` | Google Chrome on macOS |
+   | `<folder>/chromium-<build>/chrome-linux64/chrome` (and `chrome-linux`, `chrome-mac`, `chrome-mac-arm64`) | Any Playwright browser build, the newest first, in `PLAYWRIGHT_BROWSERS_PATH`, `~/.cache/ms-playwright` and `~/Library/Caches/ms-playwright` |
+
+With none found, the command fails and lists every path it looked in.
+
+**Overriding it.** For one machine or one run, set the variable:
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chrome npx drawing-board story-shot …`. For a project,
+name its browsers in `drawing-board.config.json`; they are tried before playwright-core's own and the
+known places:
+
+```json
+{ "chromium": ["tools/chromium/chrome", "/opt/company/chrome"] }
+```
+
+`"chromium"` takes one path or a list. In code, `launch({ chromium, root })` from
+`'@tinkerbench-studio/drawing-board/pictures'` takes the same list, and `launchOptions(config)` gives
+a loaded config's.
+
+**A Storybook built under a path.** A Storybook built to be served inside a site (Vite's
+`base: '/storybook/'`) asks for its scripts under that path. The commands read it from the built
+`iframe.html` and serve the build there as well as at the root, so such a build needs no rebuild.
 
 A fix's before and after: run `page-shots` (or `story-shot`) in a worktree of the merge base and on
 the branch, then `compare-pictures` the two folders.
@@ -284,6 +329,7 @@ preferred name; an existing `.drawing-board` needs no change. An unknown setting
 | `themes` | None | The themes `page-shots` draws, such as `["dark", "light"]` |
 | `hooks` | `<snapshot>/drawing-board.{ts,tsx,mts,mjs,js}` | The project's hook module |
 | `checks` | None (all off) | The optional generic checks `drawing-board check` runs, below |
+| `chromium` | None | A Chromium executable, or a list tried in order, for the browser commands; tried after `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` and before playwright-core's own browser and the known places ("Which Chromium", above) |
 
 ### Optional checks: the `checks` setting
 
@@ -367,12 +413,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.5.1 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.6.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.5.1`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.6.0`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:
