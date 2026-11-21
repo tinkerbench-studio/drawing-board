@@ -9,7 +9,7 @@ import { SAME_FONT_CSS } from './board-shot-run.ts'
 import type { Config } from './config.ts'
 import { loadHooks } from './hooks.ts'
 import { collectLandmarks, compareLandmarks, DEFAULT_TOLERANCE, keepsScreenshots, LANDMARK_ATTR, layoutMarkdown, screenshotNames, statusOf, type RawLandmark, type ScreenResult } from './landmarks.ts'
-import { launch, serve } from './pictures-run.ts'
+import { launch, launchOptions, serve } from './pictures-run.ts'
 import { project } from './project.ts'
 import { openStorySide } from './story-side.ts'
 
@@ -90,7 +90,7 @@ export const layout = async (config: Config, options: LayoutOptions = {}): Promi
   const attr = options.attr ?? LANDMARK_ATTR
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE
   const served = await serve(boardsDir)
-  const browser = await launch()
+  const browser = await launch(launchOptions(config))
   const results: ScreenResult[] = []
   try {
     for (const board of boards) {

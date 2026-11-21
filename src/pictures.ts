@@ -80,3 +80,13 @@ export const compareOptions = (argv: readonly string[]): CompareOptions => {
 
 /** What a pair's banner says about it. */
 export const changeNote = (regions: number): string => (regions === 0 ? 'no visible change' : `${regions} region${regions === 1 ? '' : 's'} changed, outlined in red`)
+
+/**
+ * The path a built Storybook was built to be served under, read from its `iframe.html`: `/storybook/` for one built with
+ * Vite's `base: '/storybook/'` (a Storybook published inside a site), `/` for the usual build. Only an absolute path
+ * before `assets/` counts; a relative one (`./assets/`) is served from anywhere.
+ */
+export const storybookBase = (iframeHtml: string): string => {
+  const found = /\b(?:src|href)="(\/[^"]*?\/)assets\//.exec(iframeHtml)
+  return found === null || /^\/\//.test(found[1]!) ? '/' : found[1]!
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { changeNote, compareFile, compareOptions, pairPictures, storyIds, storyShotOptions, storyUrl, storyVariants } from './pictures.ts'
+import { changeNote, compareFile, compareOptions, pairPictures, storybookBase, storyIds, storyShotOptions, storyUrl, storyVariants } from './pictures.ts'
 
 describe('story-shot', () => {
   it("addresses a story's own page, with the theme as a Storybook global", () => {
@@ -48,5 +48,19 @@ describe('compare-pictures', () => {
 
   it('says no visible change, or how many regions changed', () => {
     expect([changeNote(0), changeNote(1), changeNote(3)]).toEqual(['no visible change', '1 region changed, outlined in red', '3 regions changed, outlined in red'])
+  })
+})
+
+describe('storybookBase', () => {
+  it('reads the path a Storybook was built under, from its iframe.html', () => {
+    expect(storybookBase('<link href="/storybook/assets/iframe-8y.css"><script src="/storybook/assets/iframe-Q.js"></script>')).toBe('/storybook/')
+    expect(storybookBase('<script type="module" src="/docs/sb/assets/iframe.js"></script>')).toBe('/docs/sb/')
+  })
+
+  it('is / for a usual build, a relative one, or one from another host', () => {
+    expect(storybookBase('<script src="./assets/iframe.js"></script>')).toBe('/')
+    expect(storybookBase('<script src="/assets/iframe.js"></script>')).toBe('/')
+    expect(storybookBase('<script src="//cdn.example.com/assets/x.js"></script>')).toBe('/')
+    expect(storybookBase('<p>no scripts</p>')).toBe('/')
   })
 })

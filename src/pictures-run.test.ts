@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { comparePictures, storyShot } from './pictures-run.ts'
+import { fallbackChromium, thisMachine } from './chromium.ts'
+import { comparePictures, launch, serve, storyShot, whichChromium } from './pictures-run.ts'
 
 const chromium = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
 
@@ -26,6 +27,24 @@ const pictures = async (pages: Record<string, string>) => {
   }
   return dir
 }
+
+// With no variable and no setting, a machine whose playwright-core build is missing (a Claude Code cloud session
+// pins its own) still starts a Chromium from a known place. Skipped on a machine with none.
+const unset = { ...thisMachine(), env: { ...process.env, PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: undefined } }
+describe.skipIf(fallbackChromium(unset) === undefined)('launch with nothing named', () => {
+  it('starts a Chromium: playwright-core\'s own, else a known place', { timeout: 60000 }, async () => {
+    const chosen = await whichChromium({ machine: unset })
+    expect(['playwright-core', 'known place']).toContain(chosen.source)
+    const browser = await launch({ machine: unset })
+    try {
+      const page = await browser.newPage()
+      await page.setContent('<h1>Trips</h1>')
+      expect(await page.textContent('h1')).toBe('Trips')
+    } finally {
+      await browser.close()
+    }
+  })
+})
 
 describe.skipIf(chromium === undefined)('compare-pictures in Chromium', () => {
   it('outlines what changed, sees nothing in a picture that did not, and skips one with no pair', { timeout: 60000 }, async () => {
@@ -56,5 +75,25 @@ describe('story-shot', () => {
       console.log = log
     }
     expect(logged).toEqual(['pages-a--one'])
+  })
+})
+
+describe('serve', () => {
+  it('serves a Storybook built under a path both there and at the root, and nothing outside its folder', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'drawing-board-serve-'))
+    mkdirSync(join(dir, 'assets'))
+    writeFileSync(join(dir, 'iframe.html'), '<script type="module" src="/storybook/assets/iframe.js"></script>')
+    writeFileSync(join(dir, 'assets/iframe.js'), 'export {}')
+    const { server, base } = await serve(dir)
+    try {
+      const status = async (path: string) => (await fetch(`${base}${path}`)).status
+      expect(await status('/storybook/assets/iframe.js')).toBe(200)
+      expect(await status('/assets/iframe.js')).toBe(200)
+      expect(await status('/storybook/iframe.html')).toBe(200)
+      expect(await status('/storybook/../../etc/passwd')).not.toBe(200)
+      expect(await status('/storybook/assets/missing.js')).toBe(404)
+    } finally {
+      server.close()
+    }
   })
 })

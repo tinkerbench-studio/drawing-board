@@ -55,10 +55,17 @@ cannot be rendered from the snapshot, a new screen (the after alone), or a copy 
 
 ## Making it
 
-`drawing-board annotate --board <Board>.dc.html` makes it from the committed snapshot and a built Storybook: the banners, the numbered colour-coded boxes and the table, with the differences from `<snapshot>/differences/<Board>.json` or found by comparing wording. Check its table against the picture all the same. By hand: serve the snapshot's board copies
-(never the live canvas) over HTTP and open the board in Chromium; shoot the story from Storybook's
-`iframe.html?id=<story id>`, at full height; add the banners and boxes in the page before the shot,
-then join the two images.
+`drawing-board annotate --board <Board>.dc.html` makes it from the committed snapshot and a built Storybook: the banners, the numbered colour-coded boxes and the table, with the differences from `<snapshot>/differences/<Board>.json` or found by comparing wording. Check its table against the picture all the same. The same package's `story-shot` and
+`compare-pictures` make a story's before and after, outlined; every one of these commands ships with
+the package, so a project has them all (some projects also give them script names of their own).
+
+**The browser.** The commands find a Chromium themselves: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, then
+the project's `chromium` setting, then playwright-core's own, then the known places, among them a
+Claude Code cloud session's `/opt/pw-browsers/chromium` (the package README, "Which Chromium", lists
+every path and how a project overrides them). `drawing-board browser` says which one they would
+start. When a picture command fails, run `drawing-board browser`, and fix what it names: set the
+variable or the setting to a Chromium that exists. Do not write a screenshot script of your own to get
+around it: report the command and its error on the ticket instead, so the cause is fixed once.
 
 ## Putting it on the ticket or pull request
 
