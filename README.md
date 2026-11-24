@@ -11,6 +11,7 @@ keeps what is particular to it in one short file and one config file.
 | `canvas-sync` | Who owns what, publishing and refreshing in the same change, refreshing only the boards you changed, snapshot conflicts, a board and its story that disagree |
 | `flow-pages` | One canvas page per user flow, and where a new board goes |
 | `ux-picture` | The board-beside-story picture a UX bug or fix carries, and getting it onto the ticket |
+| `design-audit` | The audit of the canvas against Storybook: one issue per page with a picture, for the real differences nobody has raised, and no code changed |
 
 `canvas-sync` and `design-change` also watch the canvas's 512-file limit, and `flow-pages` keeps the
 pages in `pages.json`.
