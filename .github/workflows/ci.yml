@@ -1,5 +1,6 @@
-# Tests every pull request and push to main; publishes the package to GitHub Packages on a version tag (v0.1.0),
-# after checking the tag is the version in package.json.
+# Tests every pull request and push to main. A push to main that raises the version in package.json tags it, cuts a GitHub release and
+# publishes the package to GitHub Packages (the release job); a v* tag pushed by hand publishes through the publish job, after checking the
+# tag is the version in package.json. The marketplace pins this repository by that tag, so a version is released only once.
 name: CI
 
 on:
@@ -7,6 +8,8 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+  # By hand, to release the version on main when no push raised it (the first run of the release job, or a release that failed).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -46,5 +49,46 @@ jobs:
         run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
       - run: npm ci
       - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # A tag or release made with GITHUB_TOKEN starts no workflow, so the publish job above never sees the tag this job makes: this job publishes
+  # itself. release-version decides, and answers no for a version that is already tagged, so a re-run or a second push releases nothing.
+  release:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: test
+    runs-on: ubuntu-latest
+    # One release at a time, each on the latest main.
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://npm.pkg.github.com
+          scope: '@tinkerbench-studio'
+      - id: version
+        uses: tinkerbench-studio/github-actions/release-version@f7a5f9b1359632c12f915fe7cd49a5cb92ecd96f # github-actions#1
+        with:
+          files: package.json
+          before: ${{ github.event.before }}
+      - name: Tag and release
+        if: steps.version.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+      - run: npm ci
+        if: steps.version.outputs.release == 'true'
+      - name: Publish
+        if: steps.version.outputs.release == 'true'
+        run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
