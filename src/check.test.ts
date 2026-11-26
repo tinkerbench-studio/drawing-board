@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, unreadBound, tokenBoardProblems, tokenEntries } from './check.ts'
+import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, unreadBound, tokenBoardProblems, tokenEntries, unmarkedSampleWarnings } from './check.ts'
 import { copyHash, indexOf, storyIndexOf, type BoardMap, type BoardMeta } from './snapshot.ts'
 
 const meta = (file: string, source?: string): BoardMeta => ({ file, title: null, page: null, w: 1, h: 1, ...(source === undefined ? {} : { copy: { hash: copyHash(source), version: 'v1' } }) })
@@ -200,5 +200,21 @@ describe('duplicateBoardProblems', () => {
   it('names a board file with a meta file in two snapshots, and both canvases', () => {
     expect(duplicateBoardProblems({ main: ['A.dc.html', 'B.dc.html'], reference: ['B.dc.html', 'C.dc.html'] })).toEqual(['B.dc.html has a meta file in the snapshots of the canvases main and reference: a board name is unique across canvases, so keep the board on one canvas (or rename one) and refresh both.'])
     expect(duplicateBoardProblems({ main: ['A.dc.html'] })).toEqual([])
+  })
+})
+
+describe('unmarkedSampleWarnings', () => {
+  const marked = (file: string, samples?: Record<string, string>): BoardMeta => ({ ...meta(file, '<p>a</p>'), ...(samples === undefined ? {} : { samples }) })
+  const map: BoardMap = { 'A.dc.html': { story: 'L/A' }, 'B.dc.html': { story: 'L/B' }, 'C.dc.html': { story: 'L/C', status: 'not built' }, 'D.dc.html': { none: 'a spec' } }
+  it('warns about a mapped board with a copy that marks no value, naming the board and its story', () => {
+    const [warning, ...rest] = unmarkedSampleWarnings([marked('A.dc.html'), marked('B.dc.html', { 'a.b': 'x' })], map)
+    expect(warning).toMatch(/^A\.dc\.html is mapped to L\/A but marks no data-sample value/)
+    expect(rest).toEqual([])
+  })
+  it('treats an empty samples record as marking nothing', () => {
+    expect(unmarkedSampleWarnings([marked('A.dc.html', {})], map)).toHaveLength(1)
+  })
+  it('leaves alone a board with no copy, a not built board, a none board and an unmapped board', () => {
+    expect(unmarkedSampleWarnings([meta('A.dc.html'), marked('C.dc.html'), marked('D.dc.html'), marked('E.dc.html')], map)).toEqual([])
   })
 })
