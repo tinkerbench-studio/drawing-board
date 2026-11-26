@@ -69,9 +69,9 @@ const chosenConfigs = (path: string | undefined, canvasId: string | undefined): 
 /**
  * The package's checks on each canvas (its id before each line when there are several), board names across them,
  * then the project's own from its `checks()` hook, once, with the main canvas's config. Then the canvas files and
- * the warnings, which never change the exit code.
+ * the warnings, which never change the exit code unless `strict` (`--strict`) is set: then any warning fails the check.
  */
-const check = async (path: string | undefined, canvasId: string | undefined) => {
+const check = async (path: string | undefined, canvasId: string | undefined, strict = false) => {
   const main = loadConfig(path)
   const configs = chosenConfigs(path, canvasId)
   const tag = (config: Config) => (line: string) => (configs.length > 1 ? `[${config.canvas.id}] ${line}` : line)
@@ -85,7 +85,12 @@ const check = async (path: string | undefined, canvasId: string | undefined) => 
     const files = canvasFiles(config)
     if (!files.warning) console.log(tag(config)(files.line))
   }
-  for (const config of configs) for (const warning of checkWarnings(config)) console.warn(`warning: ${tag(config)(warning)}`)
+  const warnings = configs.flatMap(config => checkWarnings(config).map(tag(config)))
+  for (const warning of warnings) console.warn(`warning: ${warning}`)
+  if (strict && warnings.length > 0) {
+    console.error(`--strict: ${warnings.length} ${warnings.length === 1 ? 'warning is' : 'warnings are'} treated as ${warnings.length === 1 ? 'an error' : 'errors'}.`)
+    process.exitCode = 1
+  }
 }
 
 /** A folder read from the canvas against the snapshot: what a refresh would change. Writes nothing. */
@@ -136,6 +141,7 @@ const report = (config: Config) => {
 }
 
 const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <file>] [--canvas <id>]
+       drawing-board check [--strict]   (--strict: a warning fails the check too)
        drawing-board status --from <folder> [--canvas <id>]
        drawing-board find <words…> [--canvas <id>]
        drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>]
@@ -185,7 +191,7 @@ const main = async (argv: readonly string[]) => {
     }
   }
   if (command === 'snapshot') return snapshot(config(), argv)
-  if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv))
+  if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv), argv.includes('--strict'))
   if (command === 'status') return status(config(), argv)
   if (command === 'find') return find(rest)
   if (command === 'index') return storyIndex(config())

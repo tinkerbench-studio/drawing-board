@@ -2,7 +2,7 @@
 // project can import them for checks of its own (components against what it builds, say).
 import type { Limits } from './config.ts'
 import { sampleProblems, type SampleData } from './sample.ts'
-import { ARTIFACT_RECORD, copyHash, mapPath, PAGES_FILE, screensOf, STORY_INDEX, storyIndexOf, type ArtifactRecord, type Board, type BoardIndex, type BoardMap, type ComponentData, type Pages } from './snapshot.ts'
+import { ARTIFACT_RECORD, copyHash, mapPath, PAGES_FILE, screensOf, STORY_INDEX, storyIndexOf, type ArtifactRecord, type Board, type BoardIndex, type BoardMap, type BoardMeta, type ComponentData, type Pages } from './snapshot.ts'
 
 const REFRESH = 'publish the board to the canvas and refresh the snapshot (drawing-board snapshot)'
 
@@ -82,6 +82,17 @@ export const noneWarnings = (map: BoardMap, stories: Record<string, string>): st
   }
   return warnings
 }
+
+/**
+ * Warnings, not failures: a board mapped to a story whose copy was read but marks no `data-sample` value. The values
+ * a board shows are meant to be marked so its story reads them instead of retyping them, and nothing else notices a
+ * board that marks none (a story may legitimately keep its own data, so this never fails). A board mapped `not built`
+ * is left alone, as is one with no copy (a refresh has not read it).
+ */
+export const unmarkedSampleWarnings = (metas: readonly BoardMeta[], map: BoardMap): string[] =>
+  metas
+    .filter(m => m.copy !== undefined && map[m.file]?.story !== undefined && map[m.file]?.status !== 'not built' && Object.keys(m.samples ?? {}).length === 0)
+    .map(m => `${m.file} is mapped to ${map[m.file]!.story} but marks no data-sample value: mark each value it shows (a name, a figure, a date) on a leaf element as data-sample="group.name" and refresh the snapshot, so its story reads them instead of retyping them. If the story really keeps its own data, ignore this.`)
 
 /** The snapshot's samples and components must be what its committed copies hold. */
 export const snapshotProblems = (committed: { samples: SampleData; components: ComponentData }, fresh: { samples: SampleData; components: ComponentData }): string[] => [...sampleProblems(committed.samples, fresh.samples), ...(JSON.stringify(committed.components) !== JSON.stringify(fresh.components) ? ['the components in the boards/*.meta.json files differ from the data-component markup in boards/: refresh the snapshot.'] : [])]
