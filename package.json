@@ -1,6 +1,6 @@
 {
   "name": "@tinkerbench-studio/drawing-board",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "description": "The committed snapshot of a claude.ai design canvas, one set of files per board, and the checks that keep it, the canvas and Storybook in step.",
   "type": "module",
   "license": "MIT",

@@ -410,12 +410,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.6.2 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.6.3 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.6.2`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.6.3`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:
