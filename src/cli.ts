@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // drawing-board <snapshot|check|index|report|status|find> [--config <file>] [--canvas <id>]: the committed snapshot of a design canvas.
 // drawing-board <story-shot|compare-pictures> …: pictures for a UX change, with no config.
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import { canvasOption, CONFIG_FILE, LEGACY_CONFIG_FILE, loadConfig, snapshotConfigs, type Config } from './config.ts'
 import { findBoards } from './find.ts'
+import { parseChanged, requiredPictures } from './required-pictures.ts'
 import { compareOptions, storyShotOptions } from './pictures.ts'
 import { loadHooks } from './hooks.ts'
 import { boardNameProblems, canvasFiles, checkProblems, checkWarnings, project, readFiles, storyTitles } from './project.ts'
@@ -140,8 +142,32 @@ const report = (config: Config) => {
   console.log(['# Boards with no story', '', ...(without.length ? without.map(([f, e]) => `- ${f}: ${String(e.none)}`) : ['_none_']), '', '# Stories no board points at', '', ...(unshown.length ? unshown.map(t => `- ${t}`) : ['_none_']), ''].join('\n'))
 }
 
+/** The changed paths: `git diff --name-only <base>...HEAD` with `--base`, else stdin, one per line. */
+const changedPaths = (config: Config, argv: readonly string[]): string[] => {
+  const base = flag(argv, 'base')
+  if (argv.includes('--base') && (base === undefined || base.startsWith('-'))) throw new SnapshotError('--base names no ref: put it after the flag, as --base origin/main.')
+  if (base === undefined) return parseChanged(readFileSync(0, 'utf8'))
+  const diff = spawnSync('git', ['diff', '--name-only', '--relative', `${base}...HEAD`], { cwd: config.root, encoding: 'utf8' })
+  if (diff.status !== 0) throw new SnapshotError(`git diff --name-only ${base}...HEAD failed: ${(diff.stderr || String(diff.error ?? 'no output')).trim()}`)
+  return parseChanged(diff.stdout)
+}
+
+/** Prints the stories and pages the changed paths touch and the pictures they need, as JSON; prints nothing when anything fails. */
+const requiredPicturesCommand = async (config: Config, argv: readonly string[]) => {
+  const changed = changedPaths(config, argv)
+  const hooks = await loadHooks(config)
+  let pages: Record<string, readonly string[]> = {}
+  try {
+    pages = (await hooks.pageSources?.({ config, canvas: project(config) })) ?? {}
+  } catch (error) {
+    throw new SnapshotError(`The pageSources() hook threw: ${(error as Error).message}`)
+  }
+  console.log(JSON.stringify(requiredPictures(config, changed, pages), null, 2))
+}
+
 const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <file>] [--canvas <id>]
        drawing-board check [--strict]   (--strict: a warning fails the check too)
+       drawing-board required-pictures [--base <ref>]   (changed paths from stdin, one per line, or git diff --name-only <ref>...HEAD)
        drawing-board status --from <folder> [--canvas <id>]
        drawing-board find <words…> [--canvas <id>]
        drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>]
@@ -193,6 +219,7 @@ const main = async (argv: readonly string[]) => {
   if (command === 'snapshot') return snapshot(config(), argv)
   if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv), argv.includes('--strict'))
   if (command === 'status') return status(config(), argv)
+  if (command === 'required-pictures') return await requiredPicturesCommand(config(), argv)
   if (command === 'find') return find(rest)
   if (command === 'index') return storyIndex(config())
   if (command === 'report') return report(config())

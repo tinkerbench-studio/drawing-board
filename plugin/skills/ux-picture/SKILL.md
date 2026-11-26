@@ -59,6 +59,12 @@ cannot be rendered from the snapshot, a new screen (the after alone), or a copy 
 `compare-pictures` make a story's before and after, outlined; every one of these commands ships with
 the package, so a project has them all (some projects also give them script names of their own).
 
+**Which pictures.** When the project has `drawing-board required-pictures` (give it the changed paths on stdin,
+or `--base <ref>`), make and upload exactly the `name`s it prints under `required`, one picture each (its
+`touched` says which story or page each is for), no more and no fewer: a gate that checks the uploads
+compares against that list. A name is `story-<id>-<variant>` for a story or `<page>-<variant>` for a page, and the
+variant is a theme or `phone`; name each file so (`story-shot <dir> <id> story-<id>` writes `story-<id>-dark.png` and the rest; `page-shots` writes `<page>-<variant>.png`).
+
 **The browser.** The commands find a Chromium themselves: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`, then
 the project's `chromium` setting, then playwright-core's own, then the known places, among them a
 Claude Code cloud session's `/opt/pw-browsers/chromium` (the package README, "Which Chromium", lists
