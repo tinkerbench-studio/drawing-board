@@ -258,8 +258,10 @@ code. `check` also warns about:
   does);
 - each design system in the `designSystems` setting whose recorded version is missing or different
   ("installed 2, expected 3: install it again on the canvas, then refresh");
-- a board mapped `none` that a story names, or whose note says it is built (map it to its story and
-  refresh, or its markup is never committed);
+- a board mapped `none` that a story names (by its file name, or its name beside the word "board"), or
+  whose note says it is built unless the note opens with "not" or "no" (map it to its story and
+  refresh, or its markup is never committed). A `none` that is right as it is carries `"keepNone": "why"`
+  in its map file, and the warning stops;
 - a board mapped to a story whose copy marks no `data-sample` value (its story then keeps, or retypes, its
   own data; a board mapped `not built` is left alone);
 - a map entry's `tags` that is not a list of non-empty strings (`find` then leaves it out). A map
