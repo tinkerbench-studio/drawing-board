@@ -495,11 +495,14 @@ newer. Hooks are bundled with it already.
 
 ### Releasing
 
-Bump `version` in `package.json` and merge. The `release` job in `ci.yml` sees the push raise the version, tags it `v<version>`, cuts a
-GitHub release and publishes the package to GitHub Packages. It releases a version once: one already tagged is left alone. The plugin
-marketplace pins this repository by that tag, so after a release change the `drawing-board` `ref` in `tinkerbench-studio/marketplace` to
-it by hand. A version merged before the job existed, or a release that failed, is released by running the CI workflow by hand on `main`
-(`workflow_dispatch`); pushing a `v*` tag by hand still publishes it.
+A pull request never changes the version: the `version` job in `ci.yml` (`version-check` from `tinkerbench-studio/github-actions`) fails one that
+changes `version` in `package.json` or `plugin/.claude-plugin/plugin.json`. After the merge to `main`, the `release` job raises the version itself
+(`version-raise`), commits the raise to `main`, tags it `v<version>`, cuts a GitHub release and publishes the package to GitHub Packages. The package
+and the plugin keep separate versions: the package's is raised when `/src/**`, `package.json`, `package-lock.json` or `/plugin/**` changed (the tag and
+what is published), the plugin's when `/plugin/**` changed. The raise is a patch; label the pull request `release:minor` or `release:major` for the
+package's version to raise that part instead (any other `release:` label fails the job). Merges are released one at a time, so two in a row get two
+versions. The plugin marketplace pins this repository by that tag, so after a release change the `drawing-board` `ref` in
+`tinkerbench-studio/marketplace` to it by hand.
 
 ## The commands a project provides
 

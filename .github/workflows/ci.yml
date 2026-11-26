@@ -1,15 +1,12 @@
-# Tests every pull request and push to main. A push to main that raises the version in package.json tags it, cuts a GitHub release and
-# publishes the package to GitHub Packages (the release job); a v* tag pushed by hand publishes through the publish job, after checking the
-# tag is the version in package.json. The marketplace pins this repository by that tag, so a version is released only once.
+# Tests every pull request. A pull request never changes the version: the version job fails one that does. After the merge to main, the
+# release job raises the package's version and the plugin's (two separate versions), commits the raise to main, tags v<version>, cuts a GitHub
+# release and publishes the package to GitHub Packages. The marketplace pins this repository by that tag.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
-    tags: ['v*']
-  # By hand, to release the version on main when no push raised it (the first run of the release job, or a release that failed).
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,64 +28,104 @@ jobs:
           PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/google-chrome
       - run: npm run build
 
-  publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+  # A pull request that changes the version in either file fails; the release job raises it after the merge.
+  version:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 24
-          registry-url: https://npm.pkg.github.com
-          scope: '@tinkerbench-studio'
-      - name: The tag is the package's version
-        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-      - run: npm ci
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - uses: tinkerbench-studio/github-actions/version-check@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+        with:
+          copies: |
+            package.json
+            plugin/.claude-plugin/plugin.json
 
-  # A tag or release made with GITHUB_TOKEN starts no workflow, so the publish job above never sees the tag this job makes: this job publishes
-  # itself. release-version decides, and answers no for a version that is already tagged, so a re-run or a second push releases nothing.
+  # A tag or release made with GITHUB_TOKEN starts no workflow, so this job publishes itself. version-raise decides what is raised.
   release:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: test
     runs-on: ubuntu-latest
-    # One release at a time, each on the latest main.
+    # One release at a time, each on the latest main, so two merges in a row get two versions.
     concurrency:
       group: release
       cancel-in-progress: false
     permissions:
       contents: write
       packages: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://npm.pkg.github.com
           scope: '@tinkerbench-studio'
-      - id: version
-        uses: tinkerbench-studio/github-actions/release-version@f7a5f9b1359632c12f915fe7cd49a5cb92ecd96f # github-actions#1
-        with:
-          files: package.json
-          before: ${{ github.event.before }}
-      - name: Tag and release
-        if: steps.version.outputs.release == 'true'
+      # The raise commit is pushed with GITHUB_TOKEN and starts no workflow, but skip it anyway if this job is ever run on it.
+      - id: own
+        run: git log -1 --format=%s "$GITHUB_SHA" | grep -q '^Raise the version to ' && echo skip=true >> "$GITHUB_OUTPUT" || true
+      # A merged pull request labelled release:minor or release:major raises that part of the package's version; any other release: label fails.
+      - id: part
+        if: steps.own.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
-        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          REPO: ${{ github.repository }}
+        run: |
+          part=patch
+          for label in $(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '.[].labels[].name | select(startswith("release:")) | gsub(" "; "_")'); do
+            case "$label" in
+              release:minor) [ "$part" = major ] || part=minor ;;
+              release:major) part=major ;;
+              *) echo "::error::Unknown release label: $label (release:minor and release:major are the ones)"; exit 1 ;;
+            esac
+          done
+          echo "part=$part" >> "$GITHUB_OUTPUT"
+      - id: package
+        if: steps.own.outputs.skip != 'true'
+        uses: tinkerbench-studio/github-actions/version-raise@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+        with:
+          copies: package.json
+          paths: |
+            /src/**
+            /package.json
+            /package-lock.json
+            /plugin/**
+          before: ${{ github.event.before }}
+          after: ${{ github.sha }}
+          part: ${{ steps.part.outputs.part }}
+      - id: plugin
+        if: steps.own.outputs.skip != 'true'
+        uses: tinkerbench-studio/github-actions/version-raise@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+        with:
+          copies: plugin/.claude-plugin/plugin.json
+          paths: /plugin/**
+          before: ${{ github.event.before }}
+          after: ${{ github.sha }}
+      # Both raises land in one commit.
+      - name: Commit the raise
+        if: steps.package.outputs.raised == 'true' || steps.plugin.outputs.raised == 'true'
+        env:
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
+          PLUGIN_VERSION: ${{ steps.plugin.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Raise the version to ${PACKAGE_VERSION:-$PLUGIN_VERSION}"
+          git push origin HEAD:main
+      - name: Release
+        if: steps.package.outputs.raised == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.package.outputs.version }}
+        run: gh release create "$TAG" --target "$(git rev-parse HEAD)" --title "$TAG" --generate-notes
       - run: npm ci
-        if: steps.version.outputs.release == 'true'
+        if: steps.package.outputs.raised == 'true'
       - name: Publish
-        if: steps.version.outputs.release == 'true'
+        if: steps.package.outputs.raised == 'true'
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
