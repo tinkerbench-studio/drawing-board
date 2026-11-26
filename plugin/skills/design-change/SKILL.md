@@ -31,7 +31,7 @@ changes to it start there.
    `.claude/drawing-board.md` and names the one page to use instead; follow that, and prefix each
    copy with the ticket key so two tickets' copies stay apart.
 2. **Copy, do not move.** Copy each board you will change onto it as a new file
-   named `<Board>.<KEY>.dc.html` (for example `TrainingCase.TCK-45.dc.html`), the whole screen so the
+   named `<Board>.<KEY>.dc.html` (for example `Settings.TCK-45.dc.html`), the whole screen so the
    change is seen in context. A copy is needed because a `<dc-import>` reaches only its own canvas,
    so a prototype cannot import a main board. A new screen is
    drawn there from the library's components and tokens. When a design system is installed on the
