@@ -20,6 +20,7 @@ describe('parseConfig', () => {
       out: resolve(root, 'reports/design-canvas'),
       differences: resolve(root, DEFAULTS.snapshot, 'differences'),
       checks: {},
+      compare: {},
       themes: [],
       root,
       canvas: { id: 'main', role: 'main' },
@@ -69,9 +70,20 @@ describe('parseConfig', () => {
     [JSON.stringify({ checks: { outline: true } }), /"checks.outline" is not a check/],
     [JSON.stringify({ checks: { tokenThemes: 'yes' } }), /"checks.tokenThemes" must be true or false/],
     [JSON.stringify({ checks: { tokensCss: [] } }), /"checks.tokensCss" must be a list/],
+    [JSON.stringify({ compare: [] }), /"compare" must be an object/],
+    [JSON.stringify({ compare: { layout: true } }), /"compare.layout" is not a compare option/],
+    [JSON.stringify({ compare: { order: 'yes' } }), /"compare.order" must be true or false/],
     [JSON.stringify({ themes: 'dark' }), /"themes" must be a list of theme names/],
   ])('refuses %s', (text, message) => {
     expect(() => parseConfig(text, root)).toThrow(message)
+  })
+})
+
+describe('compare', () => {
+  it('is empty by default and keeps only the options turned on', () => {
+    expect(parseConfig('{}', root).compare).toEqual({})
+    expect(parseConfig(JSON.stringify({ compare: { order: true, closestState: false } }), root).compare).toEqual({ order: true })
+    expect(parseConfig(JSON.stringify({ compare: { order: true, closestState: true } }), root).compare).toEqual({ order: true, closestState: true })
   })
 })
 
