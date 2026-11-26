@@ -452,3 +452,29 @@ describe('drawing-board status', () => {
     expect(run(dir, ['status']).stderr).toMatch(/Usage: drawing-board status --from/)
   })
 })
+
+describe('drawing-board check --strict', () => {
+  /** A refreshed project whose board C (mapped none) is named by a story, which is a warning and no problem. */
+  const warned = () => {
+    const { dir, from } = fixture()
+    expect(run(dir, ['snapshot', '--from', from, '--version', 'v1']).status).toBe(0)
+    write(dir, 'stories/c.stories.tsx', '// C.dc.html\nexport default { title: "L/C" }')
+    return dir
+  }
+  it('prints a warning and passes without the flag', () => {
+    const check = run(warned(), ['check'])
+    expect(check.stderr).toMatch(/warning: C\.dc\.html is mapped none/)
+    expect(check.status).toBe(0)
+  })
+  it('fails on the same warning with --strict, and says so', () => {
+    const check = run(warned(), ['check', '--strict'])
+    expect(check.stderr).toMatch(/warning: C\.dc\.html is mapped none/)
+    expect(check.stderr).toMatch(/--strict: 1 warning is treated as an error/)
+    expect(check.status).toBe(1)
+  })
+  it('passes with --strict when there is no warning', () => {
+    const { dir, from } = fixture()
+    run(dir, ['snapshot', '--from', from, '--version', 'v1'])
+    expect(run(dir, ['check', '--strict']).status).toBe(0)
+  })
+})
