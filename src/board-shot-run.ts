@@ -104,7 +104,7 @@ const commit = (): string | null => {
   }
 }
 
-/** Makes `<out>/shots/<Board>-side-by-side.png` and its table `<Board>-side-by-side.md`, the names Tick-it reads a repository's design pictures by; returns their paths. */
+/** Makes `<out>/shots/<Board>-side-by-side.png` and its table `<Board>-side-by-side.md`, the names Tick-it reads a repository's design pictures by (`<Board>-side-by-side-<theme>.png` when `looped`, so a project that sets `themes` passes `--theme` to keep the plain name); returns their paths. */
 export const boardShot = async (config: Config, options: BoardShotOptions & { board: string; looped?: boolean }): Promise<{ image: string; legend: string }> => {
   const canvas = project(config)
   const boardsDir = resolve(options.boardsDir ?? canvas.file('boards'))
