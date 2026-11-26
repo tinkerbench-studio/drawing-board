@@ -63,22 +63,27 @@ export const coverageProblems = (index: BoardIndex, map: BoardMap, storyTitles: 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 /** A note that says the board is built: "built", "implemented", but not "not built yet". */
 const SAYS_BUILT = /\b(?<!not )(?<!not yet )(built|implemented)\b/i
+/** A note that opens by denying it ("Not built: …", "Not yet compared", "No story"): the board is honestly `none`, whatever else the sentence says. */
+const OPENS_WITH_NO = /^\s*(not|no)\b/i
 
 /**
  * Warnings, not failures: a board mapped `none` that looks built. A story's text names the board (its file, or its
- * name without `.dc.html`), or the board's own note says it is built. A `none` board has no copy in the snapshot, so
+ * name next to the word "board": a bare name such as `States` is ordinary prose in "United States"), or the board's
+ * own note says it is built, unless the note opens with "not" or "no". A `none` board has no copy in the snapshot, so
  * its markup is never committed and nothing can be compared with it: map it to the story and refresh it.
+ * A board whose map entry holds a non-empty `keepNone` (the reason) is left alone: it looks built, and `none` is right.
  * `stories` is each story file's text by path.
  */
 export const noneWarnings = (map: BoardMap, stories: Record<string, string>): string[] => {
   const warnings: string[] = []
   for (const [file, entry] of Object.entries(map)) {
     if (entry.story !== undefined || !entry.none) continue
+    if (typeof entry.keepNone === 'string' && entry.keepNone.trim() !== '') continue
     const stem = file.replace(/\.dc\.html$/, '')
-    const name = new RegExp(`(?<![\\w-])(${escape(file)}|${escape(stem)})(?![\\w-])`)
+    const name = new RegExp(`(?<![\\w-])${escape(file)}(?![\\w-])|(?<![\\w-])${escape(stem)}\\s+board\\b|\\bboard\\s+${escape(stem)}(?![\\w-])`, 'i')
     const named = Object.entries(stories).find(([, text]) => name.test(text))?.[0]
-    const reason = named !== undefined ? `${named} names it` : SAYS_BUILT.test(entry.none) ? `its note says it is built ("${entry.none}")` : undefined
-    if (reason !== undefined) warnings.push(`${file} is mapped none, but ${reason}: map it to its story in ${mapPath(file)} and refresh the snapshot, or its markup is never committed.`)
+    const reason = named !== undefined ? `${named} names it` : !OPENS_WITH_NO.test(entry.none) && SAYS_BUILT.test(entry.none) ? `its note says it is built ("${entry.none}")` : undefined
+    if (reason !== undefined) warnings.push(`${file} is mapped none, but ${reason}: map it to its story in ${mapPath(file)} and refresh the snapshot, or its markup is never committed. If \`none\` is right as it is, add "keepNone": "why" to that map file.`)
   }
   return warnings
 }
