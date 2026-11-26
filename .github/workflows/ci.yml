@@ -36,11 +36,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # version-check needs every copy it is given to agree, and the package and the plugin keep separate versions: one step each.
       - uses: tinkerbench-studio/github-actions/version-check@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
         with:
-          copies: |
-            package.json
-            plugin/.claude-plugin/plugin.json
+          copies: package.json
+      - uses: tinkerbench-studio/github-actions/version-check@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+        with:
+          copies: plugin/.claude-plugin/plugin.json
 
   # A tag or release made with GITHUB_TOKEN starts no workflow, so this job publishes itself. version-raise decides what is raised.
   release:
