@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, unreadBound, tokenBoardProblems, tokenEntries } from './check.ts'
+import { componentProblems, coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, unreadBound, tokenBoardProblems, tokenEntries, unmarkedSampleWarnings } from './check.ts'
 import { copyHash, indexOf, storyIndexOf, type BoardMap, type BoardMeta } from './snapshot.ts'
 
 const meta = (file: string, source?: string): BoardMeta => ({ file, title: null, page: null, w: 1, h: 1, ...(source === undefined ? {} : { copy: { hash: copyHash(source), version: 'v1' } }) })
@@ -59,14 +59,28 @@ describe('a board mapped to a story with no copy', () => {
 describe('noneWarnings', () => {
   const map: BoardMap = { 'Card.dc.html': { none: 'not in the snapshot yet' }, 'Spec.dc.html': { none: 'a spec' }, 'Done.dc.html': { none: 'built in NOK-1' }, 'Late.dc.html': { none: 'not built yet' }, 'A.dc.html': { story: 'L/A' } }
   it('warns when a story names a none board, by file or by name', () => {
-    expect(noneWarnings({ 'Card.dc.html': map['Card.dc.html']! }, { 'card.stories.tsx': "// Card.dc.html\ntitle: 'L/Card'" })).toEqual(['Card.dc.html is mapped none, but card.stories.tsx names it: map it to its story in boards/Card.map.json and refresh the snapshot, or its markup is never committed.'])
+    expect(noneWarnings({ 'Card.dc.html': map['Card.dc.html']! }, { 'card.stories.tsx': "// Card.dc.html\ntitle: 'L/Card'" })).toEqual(['Card.dc.html is mapped none, but card.stories.tsx names it: map it to its story in boards/Card.map.json and refresh the snapshot, or its markup is never committed. If `none` is right as it is, add "keepNone": "why" to that map file.'])
     expect(noneWarnings({ 'Card.dc.html': { none: 'x' } }, { 's.tsx': 'the Card board' })).toHaveLength(1)
   })
   it('does not match a longer name, so BigCard is not Card', () => {
     expect(noneWarnings({ 'Card.dc.html': { none: 'x' } }, { 's.tsx': 'BigCard Card-2 cards' })).toEqual([])
   })
   it('warns when the note says the board is built, but not "not built yet"', () => {
-    expect(noneWarnings(map, {})).toEqual(['Done.dc.html is mapped none, but its note says it is built ("built in NOK-1"): map it to its story in boards/Done.map.json and refresh the snapshot, or its markup is never committed.'])
+    expect(noneWarnings(map, {})).toEqual(['Done.dc.html is mapped none, but its note says it is built ("built in NOK-1"): map it to its story in boards/Done.map.json and refresh the snapshot, or its markup is never committed. If `none` is right as it is, add "keepNone": "why" to that map file.'])
+  })
+  it('does not read a bare name in prose as naming the board', () => {
+    expect(noneWarnings({ 'States.dc.html': { none: 'x' } }, { 's.tsx': "label: 'United States'" })).toEqual([])
+    expect(noneWarnings({ 'States.dc.html': { none: 'x' } }, { 's.tsx': '// the States board' })).toHaveLength(1)
+    expect(noneWarnings({ 'States.dc.html': { none: 'x' } }, { 's.tsx': '// board States' })).toHaveLength(1)
+  })
+  it('leaves alone a note that opens with "not" or "no", whatever else it says', () => {
+    expect(noneWarnings({ 'A.dc.html': { none: 'Not built: the flow is built later.' }, 'B.dc.html': { none: 'No story yet, built in NOK-1.' } }, {})).toEqual([])
+    expect(noneWarnings({ 'A.dc.html': { none: 'A reference, built in NOK-1.' } }, {})).toHaveLength(1)
+  })
+  it('leaves alone a board with a keepNone reason, and warns again when it is empty', () => {
+    const stories = { 's.tsx': 'A.dc.html' }
+    expect(noneWarnings({ 'A.dc.html': { none: 'built in NOK-1', keepNone: 'the dark twin has no story' } }, stories)).toEqual([])
+    expect(noneWarnings({ 'A.dc.html': { none: 'x', keepNone: ' ' } }, stories)).toHaveLength(1)
   })
   it('leaves a mapped board alone, and an honest none a story does not name', () => {
     expect(noneWarnings({ 'Spec.dc.html': { none: 'a spec' }, 'A.dc.html': { story: 'L/A' } }, { 's.tsx': 'A.dc.html' })).toEqual([])
@@ -200,5 +214,21 @@ describe('duplicateBoardProblems', () => {
   it('names a board file with a meta file in two snapshots, and both canvases', () => {
     expect(duplicateBoardProblems({ main: ['A.dc.html', 'B.dc.html'], reference: ['B.dc.html', 'C.dc.html'] })).toEqual(['B.dc.html has a meta file in the snapshots of the canvases main and reference: a board name is unique across canvases, so keep the board on one canvas (or rename one) and refresh both.'])
     expect(duplicateBoardProblems({ main: ['A.dc.html'] })).toEqual([])
+  })
+})
+
+describe('unmarkedSampleWarnings', () => {
+  const marked = (file: string, samples?: Record<string, string>): BoardMeta => ({ ...meta(file, '<p>a</p>'), ...(samples === undefined ? {} : { samples }) })
+  const map: BoardMap = { 'A.dc.html': { story: 'L/A' }, 'B.dc.html': { story: 'L/B' }, 'C.dc.html': { story: 'L/C', status: 'not built' }, 'D.dc.html': { none: 'a spec' } }
+  it('warns about a mapped board with a copy that marks no value, naming the board and its story', () => {
+    const [warning, ...rest] = unmarkedSampleWarnings([marked('A.dc.html'), marked('B.dc.html', { 'a.b': 'x' })], map)
+    expect(warning).toMatch(/^A\.dc\.html is mapped to L\/A but marks no data-sample value/)
+    expect(rest).toEqual([])
+  })
+  it('treats an empty samples record as marking nothing', () => {
+    expect(unmarkedSampleWarnings([marked('A.dc.html', {})], map)).toHaveLength(1)
+  })
+  it('leaves alone a board with no copy, a not built board, a none board and an unmapped board', () => {
+    expect(unmarkedSampleWarnings([meta('A.dc.html'), marked('C.dc.html'), marked('D.dc.html'), marked('E.dc.html')], map)).toEqual([])
   })
 })

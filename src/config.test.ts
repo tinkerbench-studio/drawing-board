@@ -20,12 +20,20 @@ describe('parseConfig', () => {
       out: resolve(root, 'reports/design-canvas'),
       differences: resolve(root, DEFAULTS.snapshot, 'differences'),
       checks: {},
+      compare: {},
       themes: [],
       root,
       canvas: { id: 'main', role: 'main' },
       canvases: [{ id: 'main', role: 'main', artifact: null, snapshot: resolve(root, DEFAULTS.snapshot), prototypePages: TICKET_PAGE }],
       limits: { files: 512, headroom: 16 },
+      chromium: [],
     })
+  })
+
+  it('takes "chromium" as one path or a list, and refuses anything else', () => {
+    expect(parseConfig(JSON.stringify({ chromium: '/usr/bin/chromium' }), root).chromium).toEqual(['/usr/bin/chromium'])
+    expect(parseConfig(JSON.stringify({ chromium: ['tools/chrome', '/opt/chrome'] }), root).chromium).toEqual(['tools/chrome', '/opt/chrome'])
+    for (const bad of [3, [''], ['/a', 2], {}]) expect(() => parseConfig(JSON.stringify({ chromium: bad }), root)).toThrow(/"chromium" must be a path to a Chromium executable, or a list of them/)
   })
 
   it('takes only what the file names, and leaves the rest to convention', () => {
@@ -62,9 +70,20 @@ describe('parseConfig', () => {
     [JSON.stringify({ checks: { outline: true } }), /"checks.outline" is not a check/],
     [JSON.stringify({ checks: { tokenThemes: 'yes' } }), /"checks.tokenThemes" must be true or false/],
     [JSON.stringify({ checks: { tokensCss: [] } }), /"checks.tokensCss" must be a list/],
+    [JSON.stringify({ compare: [] }), /"compare" must be an object/],
+    [JSON.stringify({ compare: { layout: true } }), /"compare.layout" is not a compare option/],
+    [JSON.stringify({ compare: { order: 'yes' } }), /"compare.order" must be true or false/],
     [JSON.stringify({ themes: 'dark' }), /"themes" must be a list of theme names/],
   ])('refuses %s', (text, message) => {
     expect(() => parseConfig(text, root)).toThrow(message)
+  })
+})
+
+describe('compare', () => {
+  it('is empty by default and keeps only the options turned on', () => {
+    expect(parseConfig('{}', root).compare).toEqual({})
+    expect(parseConfig(JSON.stringify({ compare: { order: true, closestState: false } }), root).compare).toEqual({ order: true })
+    expect(parseConfig(JSON.stringify({ compare: { order: true, closestState: true } }), root).compare).toEqual({ order: true, closestState: true })
   })
 })
 

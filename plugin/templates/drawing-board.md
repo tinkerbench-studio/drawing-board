@@ -79,6 +79,19 @@ instead, and the ticket that will change it.)
   publishing a design (about four files).
 - <anything else this project has learnt the hard way>
 
+## Design audit
+
+For `design-audit`, the scheduled or by-hand check of the canvas against Storybook.
+
+- Tracker, and how issues are raised there: `<tracker and tools>`
+- Labels: the kind (`<bug>`, `<enhancement>`), the design area (`<ux>`), the owner's question
+  (`<question>`), and any size and complexity labels; leave priority to the owner
+- Footer for an issue an agent writes, if any: `<text>`
+- New issues in a run: `<5>`
+- Boards the layout screens include: `<path>`; differences lists: `<snapshot>/differences/`
+- The story and comparison steps beside `drawing-board check`: `<commands>`
+- The scheduled run, if any: `<routine name and where its prompt lives>`
+
 ## Reviews
 
 - Design reviewer: `<agent or person>`, before the push

@@ -2,7 +2,7 @@
 import { existsSync, globSync, readdirSync, readFileSync, type Dirent } from 'node:fs'
 import { basename, join, relative, sep } from 'node:path'
 
-import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, unreadBound, noneWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
+import { coverageProblems, designSystemWarnings, duplicateBoardProblems, filesInUse, metaCountBound, missingBoardWarnings, unreadBound, noneWarnings, unmarkedSampleWarnings, pageProblems, publishedProblems, recordProblems, snapshotProblems, storyIndexProblems, tagWarnings, tokenBoardProblems, UNPUBLISHED_KNOWN, type UnpublishedKnown } from './check.ts'
 import { snapshotConfigs, type Config } from './config.ts'
 import { outlineProblems, passedSampleProblems, sampleKeyProblems, themeValueProblems, tokenCssProblems } from './extra-checks.ts'
 import { componentMarkup } from './html.ts'
@@ -117,14 +117,14 @@ export const canvasFiles = (config: Config): { line: string; warning: boolean } 
 /**
  * What `check` warns about without failing: few or no free files on the canvas, boards the canvas has that the
  * snapshot does not, design systems not at the version the project expects, a board mapped none that looks built,
- * and `tags` of the wrong shape. Empty when there is nothing to say.
+ * a mapped board that marks no `data-sample` value, and `tags` of the wrong shape. Empty when there is nothing to say.
  */
 export const checkWarnings = (config: Config): string[] => {
   const p = project(config)
   const record = p.record()
   const map = p.map()
   const files = canvasFiles(config)
-  return [...(files.warning ? [files.line] : []), ...missingBoardWarnings(record, p.metas().map(m => m.file)), ...designSystemWarnings(config.designSystems ?? {}, record.designSystems), ...noneWarnings(map, storyTexts(config)), ...tagWarnings(map)]
+  return [...(files.warning ? [files.line] : []), ...missingBoardWarnings(record, p.metas().map(m => m.file)), ...designSystemWarnings(config.designSystems ?? {}, record.designSystems), ...noneWarnings(map, storyTexts(config)), ...unmarkedSampleWarnings(p.metas(), map), ...tagWarnings(map)]
 }
 
 /** A board file with a meta file in the snapshots of two canvases, across every canvas that has a snapshot. */

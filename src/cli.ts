@@ -69,9 +69,9 @@ const chosenConfigs = (path: string | undefined, canvasId: string | undefined): 
 /**
  * The package's checks on each canvas (its id before each line when there are several), board names across them,
  * then the project's own from its `checks()` hook, once, with the main canvas's config. Then the canvas files and
- * the warnings, which never change the exit code.
+ * the warnings, which never change the exit code unless `strict` (`--strict`) is set: then any warning fails the check.
  */
-const check = async (path: string | undefined, canvasId: string | undefined) => {
+const check = async (path: string | undefined, canvasId: string | undefined, strict = false) => {
   const main = loadConfig(path)
   const configs = chosenConfigs(path, canvasId)
   const tag = (config: Config) => (line: string) => (configs.length > 1 ? `[${config.canvas.id}] ${line}` : line)
@@ -85,7 +85,12 @@ const check = async (path: string | undefined, canvasId: string | undefined) => 
     const files = canvasFiles(config)
     if (!files.warning) console.log(tag(config)(files.line))
   }
-  for (const config of configs) for (const warning of checkWarnings(config)) console.warn(`warning: ${tag(config)(warning)}`)
+  const warnings = configs.flatMap(config => checkWarnings(config).map(tag(config)))
+  for (const warning of warnings) console.warn(`warning: ${warning}`)
+  if (strict && warnings.length > 0) {
+    console.error(`--strict: ${warnings.length} ${warnings.length === 1 ? 'warning is' : 'warnings are'} treated as ${warnings.length === 1 ? 'an error' : 'errors'}.`)
+    process.exitCode = 1
+  }
 }
 
 /** A folder read from the canvas against the snapshot: what a refresh would change. Writes nothing. */
@@ -136,6 +141,7 @@ const report = (config: Config) => {
 }
 
 const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <file>] [--canvas <id>]
+       drawing-board check [--strict]   (--strict: a warning fails the check too)
        drawing-board status --from <folder> [--canvas <id>]
        drawing-board find <words…> [--canvas <id>]
        drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>]
@@ -145,12 +151,19 @@ const USAGE = `Usage: drawing-board <snapshot|check|index|report> [--config <fil
        drawing-board page-shots [--out <dir>] [--theme <theme>] [--only page,page] [--mark <selector>]
        drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light|dark] | --list
        drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]
+       drawing-board browser   (which Chromium the picture commands start, and why)
 Settings come from the nearest ${CONFIG_FILE} (or ${LEGACY_CONFIG_FILE}), every one defaulted (see the README).`
 
 /** The browser commands load the browser code only when they run, so the snapshot commands never need playwright-core. */
 const browserCommand = async (command: string, argv: readonly string[], config: () => Config) => {
-  if (command === 'story-shot') return (await import('./pictures-run.ts')).storyShot(storyShotOptions(argv))
-  if (command === 'compare-pictures') return void (await (await import('./pictures-run.ts')).comparePictures(compareOptions(argv)))
+  if (command === 'story-shot' || command === 'compare-pictures' || command === 'browser') {
+    const run = await import('./pictures-run.ts')
+    const options = run.launchOptions(config())
+    if (command === 'story-shot') return run.storyShot(storyShotOptions(argv), options)
+    if (command === 'compare-pictures') return void (await run.comparePictures(compareOptions(argv), options))
+    const chosen = await run.whichChromium(options)
+    return void console.log(`${chosen.path ?? "playwright-core's own browser"} (${chosen.source})`)
+  }
   if (command === 'layout') {
     const run = await import('./layout-run.ts')
     return void console.log((await run.layout(config(), run.layoutOptions(argv))).report)
@@ -163,7 +176,7 @@ const browserCommand = async (command: string, argv: readonly string[], config: 
   if (failed.length > 0) throw new Error(`Not made:\n${failed.map(f => `- ${f}`).join('\n')}`)
 }
 
-const BROWSER_COMMANDS = new Set(['story-shot', 'compare-pictures', 'annotate', 'board-shot', 'layout', 'compare', 'page-shots'])
+const BROWSER_COMMANDS = new Set(['browser', 'story-shot', 'compare-pictures', 'annotate', 'board-shot', 'layout', 'compare', 'page-shots'])
 
 const main = async (argv: readonly string[]) => {
   const [command = '', ...rest] = argv
@@ -178,7 +191,7 @@ const main = async (argv: readonly string[]) => {
     }
   }
   if (command === 'snapshot') return snapshot(config(), argv)
-  if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv))
+  if (command === 'check') return await check(flag(argv, 'config'), canvasOption(argv), argv.includes('--strict'))
   if (command === 'status') return status(config(), argv)
   if (command === 'find') return find(rest)
   if (command === 'index') return storyIndex(config())

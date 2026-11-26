@@ -86,4 +86,15 @@ describe.skipIf(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH === undefined)('
     expect(report).toMatch(/Only in the story[^\n]*\n- button: Keep/)
     expect(readFileSync(join(config.out, 'compare.md'), 'utf8')).toBe(report)
   })
+
+  it('with the compare options on, names the closest state of a story with several and the order', { timeout: 60000 }, async () => {
+    const { dir } = project()
+    write(dir, 'storybook-static/index.json', JSON.stringify({ entries: { a: { id: 'pages-ticket--default', title: 'Pages/Ticket', name: 'Default', type: 'story' }, b: { id: 'pages-ticket--empty', title: 'Pages/Ticket', name: 'Empty', type: 'story' } } }))
+    const iframe = readFileSync(join(dir, 'storybook-static/iframe.html'), 'utf8')
+    write(dir, 'storybook-static/iframe.html', iframe)
+    const report = await compareStories(parseConfig(JSON.stringify({ compare: { order: true, closestState: true } }), dir))
+    expect(report).toMatch(/## Ticket\.dc\.html ↔ Pages\/Ticket › (Default|Empty)/)
+    expect(report).toMatch(/Closest story state: (Default|Empty)\./)
+    expect(report).toMatch(/Order: /)
+  })
 })

@@ -11,6 +11,7 @@ keeps what is particular to it in one short file and one config file.
 | `canvas-sync` | Who owns what, publishing and refreshing in the same change, refreshing only the boards you changed, snapshot conflicts, a board and its story that disagree |
 | `flow-pages` | One canvas page per user flow, and where a new board goes |
 | `ux-picture` | The board-beside-story picture a UX bug or fix carries, and getting it onto the ticket |
+| `design-audit` | The audit of the canvas against Storybook: one issue per page with a picture, for the real differences nobody has raised, and no code changed |
 
 `canvas-sync` and `design-change` also watch the canvas's 512-file limit, and `flow-pages` keeps the
 pages in `pages.json`.
@@ -64,7 +65,7 @@ with no settings at all. A project that differs says only how, in a `drawing-boa
 | Command | What it does |
 | --- | --- |
 | `drawing-board snapshot --from <folder> --version <version> [--boards A.dc.html,B.dc.html [--tokens]]` | Writes the snapshot from a folder read from the canvas (`project/canvas.json`, the tokens, each mapped board, `artifact-type/dc-runtime.js`), and its record, `artifact.json` (below). With `--boards`, rewrites only those boards and leaves every other board's files byte for byte; it then names the boards on the canvas that have no meta file and were not named, which a full refresh adds. Refuses, writing nothing, a board it cannot find |
-| `drawing-board check` | Every board is mapped; every story it names exists; every mapped board's copy was read by a refresh (its hash matches, whatever the line endings); the story index, samples and components match the copies; the tokens board shows every token; `artifact.json` is the record of this canvas; every board is on a page `pages.json` lists, with its prefix; no board name is in two snapshots; the optional checks the project turned on (`checks`, below). Then the project's own checks (`checks()`, below). Exits 1 with each problem named. Then the canvas files and the warnings (below), which never change the exit code. With several canvases it checks each one that has a snapshot, its id before each line |
+| `drawing-board check` | Every board is mapped; every story it names exists; every mapped board's copy was read by a refresh (its hash matches, whatever the line endings); the story index, samples and components match the copies; the tokens board shows every token; `artifact.json` is the record of this canvas; every board is on a page `pages.json` lists, with its prefix; no board name is in two snapshots; the optional checks the project turned on (`checks`, below). Then the project's own checks (`checks()`, below). Exits 1 with each problem named. Then the canvas files and the warnings (below), which never change the exit code unless you pass `--strict`: then any warning fails the check too (exit 1, after the warnings are printed), for a CI that wants none. With several canvases it checks each one that has a snapshot, its id before each line |
 | `drawing-board index` | Rewrites `story-index.json` from the map files, no canvas needed |
 | `drawing-board report` | Boards with no story, and stories no board points at |
 | `drawing-board status --from <folder>` | A folder read from the canvas against the snapshot, before a refresh: boards on the canvas with no meta file, meta files of boards no longer there, boards on another page, copies changed on the canvas, the files the canvas holds (counted as below), and the design systems installed against the record and the `designSystems` setting. Writes nothing; exits 0. Refuses a folder with no `project/canvas.json` |
@@ -75,16 +76,61 @@ of several (below). Without it, `check` and `find` read every canvas that has a 
 the main canvas.
 
 The browser commands need `playwright-core` (an optional peer dependency: `npm install --save-dev
-playwright-core`) and a Chromium, from `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` when set:
+playwright-core`) and a Chromium, found as "Which Chromium" (below) says. `drawing-board browser`
+prints the one they would start and why:
 
 | Command | What it does |
 | --- | --- |
 | `drawing-board annotate [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--theme light\|dark]` | The picture a UX change carries: the board's committed copy beside its story from the built Storybook, at one width, each under a banner naming where it came from (DESIGN CANVAS: the board, canvas link and copy version; STORYBOOK: the story, its id, the commit), every difference boxed on both sides with the same number in its own colour, and a table. Writes `<out>/shots/<Board>-side-by-side.png` and `.md`. With no `--board`, every board a story shows. `board-shot` is its earlier name and still works. In code: `boardShots` from `'@tinkerbench-studio/drawing-board/pictures'` (see "The functions behind the commands" below). The story is the one in the built Storybook unless the project's `storyPage()` hook (below) draws it. The differences come from `<differences>/<Board>.json` (the `differences` setting; `<snapshot>/differences/` unless set) when there is one, else from the comparison below (only what is visible; the table says so) |
 | `drawing-board layout [--board <Board>.dc.html] [--storybook <dir>] [--story-id <id>] [--width N] [--tolerance N] [--attr <attribute>] [--origin <selector>]` | Where the named landmarks sit on each board and on its story, measured from the top left of the screen at one width and in one font. A landmark is an element marked `data-landmark="name"` on the board and on the component the story draws (`--attr` names another attribute; `--origin` a selector to measure from, when the screen sits at an offset). Two boxes within `--tolerance` pixels (2 by default) are the same; each is reported as same, moved, resized, or on one side only. Writes `<out>/layout/layout.md`, and for every screen outside tolerance or with nothing marked a picture of each side (`<Board>-board.png`, `<Board>-story.png`). Advisory: it never sets an exit code. A board whose story cannot be drawn is listed as not measured |
-| `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). An element's text is its parts joined with a space, but none where a `/` meets the join, so an `owner/name` split across elements reads as one name. Writes `<out>/compare.md` |
+| `drawing-board compare [--storybook <dir>]` | Each board a story shows beside that story from the built Storybook, compared by wording: the headings, buttons, links, labels and list items only on one side, leaving values out (`decided` in a map entry keeps an agreed difference apart). An element's text is its parts joined with a space, but none where a `/` meets the join, so an `owner/name` split across elements reads as one name. With the `compare` setting's options on, it also says whether the shared texts come in the same order and which state of the story is closest (below). Writes `<out>/compare.md` |
 | `drawing-board page-shots [--only page,page] [--theme <theme>] [--mark <selector>] [--out <dir>]` | The pages the project's `pages()` hook returns, each in every theme (set as `data-theme` on `<html>`) and a 390 px phone in the first; with no themes, as it is and its phone. Writes `<out>/pages/<page>-<variant>.png` |
+| `drawing-board browser` | The Chromium the commands below would start and where it was found: the variable, the `chromium` setting, playwright-core's own or a known place ("Which Chromium", below). Fails, listing every path it looked in, when there is none |
 | `drawing-board story-shot <storybook-static-dir> <story-id> <out.png> [--width N] [--theme light\|dark]` | One story from a built Storybook, on its own page. With neither flag it writes `<out>-dark.png`, `<out>-light.png` and `<out>-phone.png` (dark, 390 px); the theme is passed as Storybook's `theme` global. `--list` prints the story ids |
 | `drawing-board compare-pictures <before-dir> <after-dir> <out-dir> [--from-x N] [--left BEFORE] [--right AFTER]` | Each picture in both folders, paired by name, before beside after under banners, with what changed outlined in red. The rows are lined up first, so a change that pushes a page down outlines only the change |
+
+### Which Chromium
+
+playwright-core starts only the browser build its own version was made with, so a project that pins
+a different playwright-core than the machine's installed browsers could not take a picture. A Claude
+Code cloud session, for one, ships Playwright's browsers for its own version in `/opt/pw-browsers`.
+So the browser commands look for a Chromium in this order and start the first they find:
+
+1. **`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`**, when set: that file. A path with no file there is
+   refused, naming the variable, rather than quietly starting another browser.
+2. **The project's `chromium` setting** in `drawing-board.config.json`: the first of its paths that
+   exists (a relative path is from the project folder). Paths that do not exist on this machine are
+   skipped, so one list can name a browser for each machine the project runs on.
+3. **playwright-core's own browser**, when it is installed (`npx playwright-core install chromium`).
+4. **The known places**, the first that exists:
+
+   | Path | What it is |
+   | --- | --- |
+   | `/opt/pw-browsers/chromium` | A Claude Code cloud session's Chromium |
+   | `/usr/bin/chromium`, `/usr/bin/chromium-browser` | A Linux package's Chromium |
+   | `/usr/bin/google-chrome`, `/usr/bin/google-chrome-stable` | Google Chrome on Linux (and GitHub's Ubuntu runners) |
+   | `/Applications/Chromium.app/Contents/MacOS/Chromium` | Chromium on macOS |
+   | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` | Google Chrome on macOS |
+   | `<folder>/chromium-<build>/chrome-linux64/chrome` (and `chrome-linux`, `chrome-mac`, `chrome-mac-arm64`) | Any Playwright browser build, the newest first, in `PLAYWRIGHT_BROWSERS_PATH`, `~/.cache/ms-playwright` and `~/Library/Caches/ms-playwright` |
+
+With none found, the command fails and lists every path it looked in.
+
+**Overriding it.** For one machine or one run, set the variable:
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/path/to/chrome npx drawing-board story-shot …`. For a project,
+name its browsers in `drawing-board.config.json`; they are tried before playwright-core's own and the
+known places:
+
+```json
+{ "chromium": ["tools/chromium/chrome", "/opt/company/chrome"] }
+```
+
+`"chromium"` takes one path or a list. In code, `launch({ chromium, root })` from
+`'@tinkerbench-studio/drawing-board/pictures'` takes the same list, and `launchOptions(config)` gives
+a loaded config's.
+
+**A Storybook built under a path.** A Storybook built to be served inside a site (Vite's
+`base: '/storybook/'`) asks for its scripts under that path. The commands read it from the built
+`iframe.html` and serve the build there as well as at the root, so such a build needs no rebuild.
 
 A fix's before and after: run `page-shots` (or `story-shot`) in a worktree of the merge base and on
 the branch, then `compare-pictures` the two folders.
@@ -212,8 +258,12 @@ code. `check` also warns about:
   does);
 - each design system in the `designSystems` setting whose recorded version is missing or different
   ("installed 2, expected 3: install it again on the canvas, then refresh");
-- a board mapped `none` that a story names, or whose note says it is built (map it to its story and
-  refresh, or its markup is never committed);
+- a board mapped `none` that a story names (by its file name, or its name beside the word "board"), or
+  whose note says it is built unless the note opens with "not" or "no" (map it to its story and
+  refresh, or its markup is never committed). A `none` that is right as it is carries `"keepNone": "why"`
+  in its map file, and the warning stops;
+- a board mapped to a story whose copy marks no `data-sample` value (its story then keeps, or retypes, its
+  own data; a board mapped `not built` is left alone);
 - a map entry's `tags` that is not a list of non-empty strings (`find` then leaves it out). A map
   entry may hold a project's own fields, so this never fails an existing project's check.
 
@@ -283,7 +333,24 @@ preferred name; an existing `.drawing-board` needs no change. An unknown setting
 | `tokensBoard` | None | A board that shows every token by `--name` and value, checked against the tokens |
 | `themes` | None | The themes `page-shots` draws, such as `["dark", "light"]` |
 | `hooks` | `<snapshot>/drawing-board.{ts,tsx,mts,mjs,js}` | The project's hook module |
+| `compare` | None (both off) | What `drawing-board compare` adds to the set difference: `{ "order": true, "closestState": true }`, below |
 | `checks` | None (all off) | The optional generic checks `drawing-board check` runs, below |
+| `chromium` | None | A Chromium executable, or a list tried in order, for the browser commands; tried after `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` and before playwright-core's own browser and the known places ("Which Chromium", above) |
+
+### The `compare` setting: order and closest state
+
+`drawing-board compare` lists the wording only on each side. Two options, each off until named, add Nookivia's verdicts
+to each board's section; with both off the report is exactly what it was.
+
+- `order`: whether the texts a board and its story share come in the same order, by longest common subsequence. The
+  report says `same`, or how many shared texts come in a different order, or `not judged` when a side has fewer than 3 items.
+- `closestState`: compares the board with every state of its story (every story with that title, not only the one a
+  map entry's `page` names) and reads the lists against the closest state, the one that keeps most of the board's texts in
+  its order, which the report names. A board that shares less than 25% of its items with even that state is reported
+  as unrelated, so the mapping is probably wrong; a board with fewer than 3 items is not judged.
+
+The same verdicts are exported for a project that draws its own stories: `comparePage(…, decided, options)`,
+`comparePages(…, options)` and `compareStates` (board against each state's markup), with `UNRELATED_BELOW` and `MIN_ITEMS`.
 
 ### Optional checks: the `checks` setting
 
@@ -361,12 +428,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.5.1 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.7.0 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.5.1`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.7.0`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:
@@ -428,8 +495,11 @@ newer. Hooks are bundled with it already.
 
 ### Releasing
 
-Bump `version` in `package.json`, merge, then push the tag `v<version>`. CI tests it and publishes it
-to GitHub Packages.
+Bump `version` in `package.json` and merge. The `release` job in `ci.yml` sees the push raise the version, tags it `v<version>`, cuts a
+GitHub release and publishes the package to GitHub Packages. It releases a version once: one already tagged is left alone. The plugin
+marketplace pins this repository by that tag, so after a release change the `drawing-board` `ref` in `tinkerbench-studio/marketplace` to
+it by hand. A version merged before the job existed, or a release that failed, is released by running the CI workflow by hand on `main`
+(`workflow_dispatch`); pushing a `v*` tag by hand still publishes it.
 
 ## The commands a project provides
 
