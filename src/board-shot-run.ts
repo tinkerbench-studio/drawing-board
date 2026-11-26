@@ -141,7 +141,7 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
     }
     const banners = {
       board: designBanner({ board, artifact: config.artifact, version: meta?.copy?.version ?? null, story: entry.story }),
-      story: storybookBanner({ title: story.title, name: story.name, id: story.id, fixture: list.fixture, commit: commit(), theme: options.theme ?? null }),
+      story: storybookBanner({ title: story.title, name: story.name, id: story.id, fixture: list.fixture, commit: commit(), theme: story.hooked ? null : options.theme ?? null }),
     }
     const html = composeHtml(await shoot(boardPage, boardRects, banners.board), await shoot(storyPage, storyRects, banners.story), width)
     const out = resolve(options.out ?? join(config.out, 'shots'))
