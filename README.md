@@ -258,8 +258,10 @@ code. `check` also warns about:
   does);
 - each design system in the `designSystems` setting whose recorded version is missing or different
   ("installed 2, expected 3: install it again on the canvas, then refresh");
-- a board mapped `none` that a story names, or whose note says it is built (map it to its story and
-  refresh, or its markup is never committed);
+- a board mapped `none` that a story names (by its file name, or its name beside the word "board"), or
+  whose note says it is built unless the note opens with "not" or "no" (map it to its story and
+  refresh, or its markup is never committed). A `none` that is right as it is carries `"keepNone": "why"`
+  in its map file, and the warning stops;
 - a board mapped to a story whose copy marks no `data-sample` value (its story then keeps, or retypes, its
   own data; a board mapped `not built` is left alone);
 - a map entry's `tags` that is not a list of non-empty strings (`find` then leaves it out). A map
@@ -410,12 +412,12 @@ into the project's `node_modules/.cache`, so it imports the project's own packag
    SSH key or `gh auth setup-git`; in CI, a deploy key), so it saves no secret.
 
 2. Run it with a pinned `npx` script, which never touches `npm ci`:
-   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.6.3 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
+   `"drawing-board": "npx --yes -p @tinkerbench-studio/drawing-board@0.6.4 -p playwright-core@<version> -p esbuild@<version> drawing-board"`.
    npx cannot see the project's `node_modules`, so the optional peers come with it: `playwright-core`
    for the browser commands and `esbuild` for hooks, each pinned to the project's own version. Run it
    as `npm run drawing-board -- check`. The version is pinned but not hashed, and `--yes` skips the
    prompt. A project whose CI runs `drawing-board check` may prefer a dev dependency
-   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.6.3`), hashed in the lockfile, at the
+   (`npm install --save-dev @tinkerbench-studio/drawing-board@0.6.4`), hashed in the lockfile, at the
    cost of every `npm ci` needing the token.
 
 3. Add a `drawing-board.config.json` (or the earlier `.drawing-board`) only for what differs from the conventions above. Nookivia's, for example:

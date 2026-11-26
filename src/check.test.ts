@@ -59,14 +59,28 @@ describe('a board mapped to a story with no copy', () => {
 describe('noneWarnings', () => {
   const map: BoardMap = { 'Card.dc.html': { none: 'not in the snapshot yet' }, 'Spec.dc.html': { none: 'a spec' }, 'Done.dc.html': { none: 'built in NOK-1' }, 'Late.dc.html': { none: 'not built yet' }, 'A.dc.html': { story: 'L/A' } }
   it('warns when a story names a none board, by file or by name', () => {
-    expect(noneWarnings({ 'Card.dc.html': map['Card.dc.html']! }, { 'card.stories.tsx': "// Card.dc.html\ntitle: 'L/Card'" })).toEqual(['Card.dc.html is mapped none, but card.stories.tsx names it: map it to its story in boards/Card.map.json and refresh the snapshot, or its markup is never committed.'])
+    expect(noneWarnings({ 'Card.dc.html': map['Card.dc.html']! }, { 'card.stories.tsx': "// Card.dc.html\ntitle: 'L/Card'" })).toEqual(['Card.dc.html is mapped none, but card.stories.tsx names it: map it to its story in boards/Card.map.json and refresh the snapshot, or its markup is never committed. If `none` is right as it is, add "keepNone": "why" to that map file.'])
     expect(noneWarnings({ 'Card.dc.html': { none: 'x' } }, { 's.tsx': 'the Card board' })).toHaveLength(1)
   })
   it('does not match a longer name, so BigCard is not Card', () => {
     expect(noneWarnings({ 'Card.dc.html': { none: 'x' } }, { 's.tsx': 'BigCard Card-2 cards' })).toEqual([])
   })
   it('warns when the note says the board is built, but not "not built yet"', () => {
-    expect(noneWarnings(map, {})).toEqual(['Done.dc.html is mapped none, but its note says it is built ("built in NOK-1"): map it to its story in boards/Done.map.json and refresh the snapshot, or its markup is never committed.'])
+    expect(noneWarnings(map, {})).toEqual(['Done.dc.html is mapped none, but its note says it is built ("built in NOK-1"): map it to its story in boards/Done.map.json and refresh the snapshot, or its markup is never committed. If `none` is right as it is, add "keepNone": "why" to that map file.'])
+  })
+  it('does not read a bare name in prose as naming the board', () => {
+    expect(noneWarnings({ 'States.dc.html': { none: 'x' } }, { 's.tsx': "label: 'United States'" })).toEqual([])
+    expect(noneWarnings({ 'States.dc.html': { none: 'x' } }, { 's.tsx': '// the States board' })).toHaveLength(1)
+    expect(noneWarnings({ 'States.dc.html': { none: 'x' } }, { 's.tsx': '// board States' })).toHaveLength(1)
+  })
+  it('leaves alone a note that opens with "not" or "no", whatever else it says', () => {
+    expect(noneWarnings({ 'A.dc.html': { none: 'Not built: the flow is built later.' }, 'B.dc.html': { none: 'No story yet, built in NOK-1.' } }, {})).toEqual([])
+    expect(noneWarnings({ 'A.dc.html': { none: 'A reference, built in NOK-1.' } }, {})).toHaveLength(1)
+  })
+  it('leaves alone a board with a keepNone reason, and warns again when it is empty', () => {
+    const stories = { 's.tsx': 'A.dc.html' }
+    expect(noneWarnings({ 'A.dc.html': { none: 'built in NOK-1', keepNone: 'the dark twin has no story' } }, stories)).toEqual([])
+    expect(noneWarnings({ 'A.dc.html': { none: 'x', keepNone: ' ' } }, stories)).toHaveLength(1)
   })
   it('leaves a mapped board alone, and an honest none a story does not name', () => {
     expect(noneWarnings({ 'Spec.dc.html': { none: 'a spec' }, 'A.dc.html': { story: 'L/A' } }, { 's.tsx': 'A.dc.html' })).toEqual([])
