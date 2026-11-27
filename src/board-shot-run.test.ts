@@ -49,6 +49,14 @@ describe.skipIf(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH === undefined)('
     expect(made.map(f => f.split(/[\\/]/).at(-1))).toEqual(['Ticket-side-by-side.png'])
   })
 
+  it('draws each configured theme when no --theme is given, and one picture for --theme', { timeout: 90000 }, async () => {
+    const { dir } = project()
+    const themed = parseConfig(JSON.stringify({ themes: ['dark', 'light'] }), dir)
+    const names = (made: string[]) => made.map(f => f.split(/[\\/]/).at(-1))
+    expect(names((await boardShots(themed, {})).made)).toEqual(['Ticket-side-by-side-dark.png', 'Ticket-side-by-side-light.png'])
+    expect(names((await boardShots(themed, { theme: 'light' })).made)).toEqual(['Ticket-side-by-side.png'])
+  })
+
   it('draws the differences file instead, and refuses a selector that has drifted', { timeout: 60000 }, async () => {
     const { dir, config } = project()
     write(dir, 'design/canvas/differences/Ticket.json', JSON.stringify({ differences: [{ title: 'Save button', detail: 'Same words, checked by hand.', board: '#save', story: '#save' }] }))
@@ -85,6 +93,22 @@ describe.skipIf(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH === undefined)('
     expect(report).toMatch(/Only on the board[^\n]*\n- button: Export/)
     expect(report).toMatch(/Only in the story[^\n]*\n- button: Keep/)
     expect(readFileSync(join(config.out, 'compare.md'), 'utf8')).toBe(report)
+  })
+
+  it('takes a story’s markup from the storyMarkup() hook, with no built Storybook', { timeout: 60000 }, async () => {
+    const { dir } = project()
+    rmSync(join(dir, 'storybook-static'), { recursive: true })
+    write(dir, 'hooks.mjs', `export const storyMarkup = ({ story }) => '<main><h1>Trips</h1><button>Save</button> <button>Keep</button></main>'`)
+    const report = await compareStories(parseConfig(JSON.stringify({ hooks: 'hooks.mjs' }), dir))
+    expect(report).toMatch(/## Ticket\.dc\.html ↔ Pages\/Ticket › the project’s storyMarkup\(\) hook/)
+    expect(report).toMatch(/Only on the board[^\n]*\n- button: Export/)
+    expect(report).toMatch(/Only in the story[^\n]*\n- button: Keep/)
+  })
+
+  it('falls back to the built Storybook when the hook returns nothing for a story', { timeout: 60000 }, async () => {
+    const { dir } = project()
+    write(dir, 'hooks.mjs', 'export const storyMarkup = () => undefined')
+    expect(await compareStories(parseConfig(JSON.stringify({ hooks: 'hooks.mjs' }), dir))).toMatch(/## Ticket\.dc\.html ↔ Pages\/Ticket › Default/)
   })
 
   it('with the compare options on, names the closest state of a story with several and the order', { timeout: 60000 }, async () => {

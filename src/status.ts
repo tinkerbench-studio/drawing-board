@@ -3,6 +3,7 @@
 import { join } from 'node:path'
 
 import { DS_ASSUMPTION, filesInUse, unreadBound } from './check.ts'
+import { sampleKeyProblems } from './extra-checks.ts'
 import type { Limits } from './config.ts'
 import { SnapshotError } from './sample.ts'
 import { boardsOf, copyHash, countCanvasFiles, designSystemsOf, unrecordedBoards, type ArtifactRecord, type BoardMeta } from './snapshot.ts'
@@ -19,6 +20,8 @@ export type CanvasStatus = {
   changed: string[]
   /** Boards with a copy that the folder does not hold, so they were not compared. */
   unread: string[]
+  /** A `data-sample` key used twice on a board of the folder read (what `sampleKeyProblems` finds), one line each. */
+  sampleKeys: string[]
   /** The files the canvas holds against the limit: every board canvas.json lists, canvas.json, the tokens and the other files read; a lower bound when an installed design system's files were not read. */
   files: { line: string; warning: boolean }
   /** Design systems installed on the canvas against the record and against the project's `designSystems`. */
@@ -54,6 +57,7 @@ export const canvasStatus = (input: { from: string; read: (path: string) => stri
   const copied = input.metas.filter(m => m.copy !== undefined && onCanvas.has(m.file))
   const unread = copied.filter(m => input.read(m.file) === undefined).map(m => m.file)
   const changed = copied.filter(m => input.read(m.file) !== undefined && copyHash(input.read(m.file)!) !== m.copy!.hash).map(m => m.file)
+  const sampleKeys = sampleKeyProblems(Object.fromEntries(copied.flatMap(m => (input.read(m.file) === undefined ? [] : [[m.file, input.read(m.file)!]]))))
   const installed = designSystemsOf(canvas)
   const recorded = input.record.designSystems ?? {}
   const designSystems = [
@@ -67,8 +71,9 @@ export const canvasStatus = (input: { from: string; read: (path: string) => stri
     ...(changed.length > 0 ? [`Changed on the canvas since the snapshot's copy: ${changed.join(', ')}.`] : []),
     ...(unread.length > 0 ? [`Not in the folder, so not compared: ${unread.join(', ')}.`] : []),
     ...designSystems,
+    ...sampleKeys,
   ]
   const count = countCanvasFiles(canvas, input.tokens, input.paths)
   const files = filesInUse({ used: count.files, limits: input.limits, ...(count.unread.length === 0 ? {} : { bound: unreadBound(count.unread) }) })
-  return { added, removed, moved, changed, unread, files, designSystems, ...(Object.keys(installed).length === 0 ? {} : { assumption: DS_ASSUMPTION }), lines: lines.length > 0 ? lines : ['The snapshot is in step with the canvas read.'] }
+  return { added, removed, moved, changed, unread, sampleKeys, files, designSystems, ...(Object.keys(installed).length === 0 ? {} : { assumption: DS_ASSUMPTION }), lines: lines.length > 0 ? lines : ['The snapshot is in step with the canvas read.'] }
 }
