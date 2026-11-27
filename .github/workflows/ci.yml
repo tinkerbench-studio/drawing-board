@@ -37,10 +37,10 @@ jobs:
         with:
           fetch-depth: 0
       # version-check needs every copy it is given to agree, and the package and the plugin keep separate versions: one step each.
-      - uses: tinkerbench-studio/github-actions/version-check@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+      - uses: tinkerbench-studio/github-actions/version-check@198e8610c3ff4fe57ca1b39696bc7106cea6e491 # v1.4.0
         with:
           copies: package.json
-      - uses: tinkerbench-studio/github-actions/version-check@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+      - uses: tinkerbench-studio/github-actions/version-check@198e8610c3ff4fe57ca1b39696bc7106cea6e491 # v1.4.0
         with:
           copies: plugin/.claude-plugin/plugin.json
 
@@ -70,25 +70,9 @@ jobs:
       # The raise commit is pushed with GITHUB_TOKEN and starts no workflow, but skip it anyway if this job is ever run on it.
       - id: own
         run: git log -1 --format=%s "$GITHUB_SHA" | grep -q '^Raise the version to ' && echo skip=true >> "$GITHUB_OUTPUT" || true
-      # A merged pull request labelled release:minor or release:major raises that part of the package's version; any other release: label fails.
-      - id: part
-        if: steps.own.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-        run: |
-          part=patch
-          for label in $(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '.[].labels[].name | select(startswith("release:")) | gsub(" "; "_")'); do
-            case "$label" in
-              release:minor) [ "$part" = major ] || part=minor ;;
-              release:major) part=major ;;
-              *) echo "::error::Unknown release label: $label (release:minor and release:major are the ones)"; exit 1 ;;
-            esac
-          done
-          echo "part=$part" >> "$GITHUB_OUTPUT"
       - id: package
         if: steps.own.outputs.skip != 'true'
-        uses: tinkerbench-studio/github-actions/version-raise@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+        uses: tinkerbench-studio/github-actions/version-raise@198e8610c3ff4fe57ca1b39696bc7106cea6e491 # v1.4.0
         with:
           copies: package.json
           paths: |
@@ -98,10 +82,11 @@ jobs:
             /plugin/**
           before: ${{ github.event.before }}
           after: ${{ github.sha }}
-          part: ${{ steps.part.outputs.part }}
+          # Reads the merged pull request's labels: release:minor or release:major raises that part, and any other release: label fails the job.
+          token: ${{ github.token }}
       - id: plugin
         if: steps.own.outputs.skip != 'true'
-        uses: tinkerbench-studio/github-actions/version-raise@3b62017c96ef699ebedcd21924707f313a96e8f0 # v1.3.0
+        uses: tinkerbench-studio/github-actions/version-raise@198e8610c3ff4fe57ca1b39696bc7106cea6e491 # v1.4.0
         with:
           copies: plugin/.claude-plugin/plugin.json
           paths: /plugin/**
