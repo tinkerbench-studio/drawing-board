@@ -17,7 +17,7 @@ import { openStorySide, pickStory, storybookEntries, type IndexEntry } from './s
 /** Fonts from the canvas do not load offline, so both sides are drawn in one family: their text is then the same width. */
 export const SAME_FONT_CSS = '*, *::before, *::after { font-family: Arial, Helvetica, sans-serif !important; }'
 
-export type BoardShotOptions = { board?: string; storybook?: string; storyId?: string; width?: number; theme?: 'light' | 'dark'; out?: string; boardsDir?: string }
+export type BoardShotOptions = { board?: string; storybook?: string; storyId?: string; width?: number; theme?: string; out?: string; boardsDir?: string }
 
 const USAGE = 'Usage: drawing-board board-shot [--board <Board>.dc.html] [--storybook <storybook-static-dir>] [--story-id <id>] [--width N] [--theme light|dark] [--out <dir>] [--boards-dir <dir>]'
 
@@ -104,8 +104,8 @@ const commit = (): string | null => {
   }
 }
 
-/** Makes `<out>/shots/<Board>-side-by-side.png` and its table `<Board>-side-by-side.md`, the names Tick-it reads a repository's design pictures by; returns their paths. */
-export const boardShot = async (config: Config, options: BoardShotOptions & { board: string }): Promise<{ image: string; legend: string }> => {
+/** Makes `<out>/shots/<Board>-side-by-side.png` and its table `<Board>-side-by-side.md`, the names Tick-it reads a repository's design pictures by (`<Board>-side-by-side-<theme>.png` when `looped`, so a project that sets `themes` passes `--theme` to keep the plain name); returns their paths. */
+export const boardShot = async (config: Config, options: BoardShotOptions & { board: string; looped?: boolean }): Promise<{ image: string; legend: string }> => {
   const canvas = project(config)
   const boardsDir = resolve(options.boardsDir ?? canvas.file('boards'))
   const { board } = options
@@ -141,18 +141,19 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
     }
     const banners = {
       board: designBanner({ board, artifact: config.artifact, version: meta?.copy?.version ?? null, story: entry.story }),
-      story: storybookBanner({ title: story.title, name: story.name, id: story.id, fixture: list.fixture, commit: commit(), theme: options.theme ?? null }),
+      story: storybookBanner({ title: story.title, name: story.name, id: story.id, fixture: list.fixture, commit: commit(), theme: story.hooked ? null : options.theme ?? null }),
     }
     const html = composeHtml(await shoot(boardPage, boardRects, banners.board), await shoot(storyPage, storyRects, banners.story), width)
     const out = resolve(options.out ?? join(config.out, 'shots'))
     mkdirSync(out, { recursive: true })
     const stem = board.replace(/\.dc\.html$/, '')
-    const image = join(out, `${stem}-side-by-side.png`)
+    const name = `${stem}-side-by-side${options.looped ? `-${options.theme}` : ''}`
+    const image = join(out, `${name}.png`)
     const joined = await browser.newPage({ viewport: { width: width * 2 + SIDE_GAP, height: 1 } })
     await joined.setContent(html)
     await joined.screenshot({ path: image, fullPage: true, type: 'png' })
-    const legend = join(out, `${stem}-side-by-side.md`)
-    writeFileSync(legend, legendMarkdown({ board, list, drawn: list.differences.map((_, i) => ({ board: boardRects[i] ?? null, story: storyRects[i] ?? null })), banners, image: `${stem}-side-by-side.png` }))
+    const legend = join(out, `${name}.md`)
+    writeFileSync(legend, legendMarkdown({ board, list, drawn: list.differences.map((_, i) => ({ board: boardRects[i] ?? null, story: storyRects[i] ?? null })), banners, image: `${name}.png` }))
     return { image, legend }
   } finally {
     await browser.close()
@@ -162,52 +163,64 @@ export const boardShot = async (config: Config, options: BoardShotOptions & { bo
 }
 
 /**
- * `drawing-board compare`: every board a story shows, beside that story drawn by the built Storybook, compared by
- * wording (comparePage). Writes `<out>/compare.md` and returns the report. A board whose story the build lacks is
- * listed as not compared.
+ * `drawing-board compare`: every board a story shows, beside that story, compared by wording (comparePage). A story's
+ * markup comes from the project's `storyMarkup()` hook when it has one that returns some, else from the built
+ * Storybook (read only when a story needs it). Writes `<out>/compare.md` and returns the report. A board whose story
+ * neither has is listed as not compared.
  */
 export const compareStories = async (config: Config, storybookDir = config.storybook): Promise<string> => {
   const canvas = project(config)
+  const hooks = await loadHooks(config)
   const storybook = resolve(storybookDir)
-  const entries = storybookEntries(storybook)
   const map = canvas.map()
   const boards = await serve(canvas.file('boards'))
-  const built = await serve(storybook)
+  let built: Awaited<ReturnType<typeof serve>> | undefined
+  let entries: IndexEntry[] | undefined
   const browser = await launch(launchOptions(config))
   const pages: PageComparison[] = []
   const missing: string[] = []
   try {
     for (const [board, entry] of Object.entries(map)) {
       if (entry.story === undefined || canvas.copy(board) === undefined) continue
-      let story: IndexEntry
-      try {
-        story = pickStory(entries, entry.story, typeof entry.page === 'string' ? entry.page : undefined)
-      } catch {
-        missing.push(`${board} (${entry.story})`)
-        continue
+      const page = typeof entry.page === 'string' ? entry.page : undefined
+      const markup = await hooks.storyMarkup?.({ config, canvas, board, story: entry.story, ...(page === undefined ? {} : { page }) })
+      let story: IndexEntry | undefined
+      if (markup === undefined) {
+        try {
+          entries ??= storybookEntries(storybook)
+          story = pickStory(entries, entry.story, page)
+        } catch {
+          missing.push(`${board} (${entry.story})`)
+          continue
+        }
       }
       const width = Math.min(canvas.metas().find(m => m.file === board)?.w ?? 1280, 1440)
       const boardPage = await open(browser, `${boards.base}/${board}`, width)
-      const storyPage = await open(browser, storyUrl(built.base, story.id), width, '#storybook-root > *, #root > *')
-      const decided = Array.isArray(entry.decided) ? entry.decided.filter((d): d is string => typeof d === 'string') : []
       const inner = (page: Page) => page.evaluate(() => (document.querySelector('#storybook-root') ?? document.body).innerHTML)
-      if (config.compare.closestState) {
-        // Every state of the story, not only the one the map entry's page names: the closest one is the one compared.
-        const states: Record<string, string> = {}
-        for (const state of entries.filter(e => e.type !== 'docs' && e.title === entry.story)) {
-          const page = state.id === story.id ? storyPage : await open(browser, storyUrl(built.base, state.id), width, '#storybook-root > *, #root > *')
-          states[state.name] = await inner(page)
-          if (page !== storyPage) await page.close()
-        }
-        pages.push(compareStates(board, story.title, entry.status ?? 'not classified', await boardPage.content(), states, decided, config.compare))
-      } else pages.push(comparePage(board, `${story.title} › ${story.name}`, entry.status ?? 'not classified', await boardPage.content(), await inner(storyPage), decided, config.compare))
+      const decided = Array.isArray(entry.decided) ? entry.decided.filter((d): d is string => typeof d === 'string') : []
+      if (story === undefined) {
+        pages.push(comparePage(board, `${entry.story} › the project’s storyMarkup() hook`, entry.status ?? 'not classified', await boardPage.content(), markup!, decided, config.compare))
+      } else {
+        built ??= await serve(storybook)
+        const storyPage = await open(browser, storyUrl(built.base, story.id), width, '#storybook-root > *, #root > *')
+        if (config.compare.closestState) {
+          // Every state of the story, not only the one the map entry's page names: the closest one is the one compared.
+          const states: Record<string, string> = {}
+          for (const state of entries!.filter(e => e.type !== 'docs' && e.title === entry.story)) {
+            const page = state.id === story.id ? storyPage : await open(browser, storyUrl(built.base, state.id), width, '#storybook-root > *, #root > *')
+            states[state.name] = await inner(page)
+            if (page !== storyPage) await page.close()
+          }
+          pages.push(compareStates(board, story.title, entry.status ?? 'not classified', await boardPage.content(), states, decided, config.compare))
+        } else pages.push(comparePage(board, `${story.title} › ${story.name}`, entry.status ?? 'not classified', await boardPage.content(), await inner(storyPage), decided, config.compare))
+        await storyPage.close()
+      }
       await boardPage.close()
-      await storyPage.close()
     }
   } finally {
     await browser.close()
     boards.server.close()
-    built.server.close()
+    built?.server.close()
   }
   const report = comparisonReport(pages) + (missing.length ? `\n## Not compared\n\nThe built Storybook has no story for:\n\n${missing.map(m => `- ${m}`).join('\n')}\n` : '')
   mkdirSync(config.out, { recursive: true })
@@ -215,18 +228,25 @@ export const compareStories = async (config: Config, storybookDir = config.story
   return report
 }
 
-/** `drawing-board board-shot` with no `--board`: every board a story shows that has a copy. Goes on past a board that fails, and names each failure at the end. */
+/**
+ * `drawing-board annotate` with no `--board`: every board a story shows that has a copy. With no `--theme`, each board
+ * is drawn once in each of `config.themes` (`<Board>-side-by-side-<theme>.png`); with a theme, or with no themes
+ * configured, once (`<Board>-side-by-side.png`). Goes on past a board that fails, and names each failure at the end.
+ */
 export const boardShots = async (config: Config, options: BoardShotOptions): Promise<{ made: string[]; failed: string[] }> => {
   const canvas = project(config)
   const boards = options.board !== undefined ? [options.board] : Object.entries(canvas.map()).filter(([board, entry]) => entry.story !== undefined && canvas.copy(board) !== undefined).map(([board]) => board)
   const made: string[] = []
   const failed: string[] = []
+  const looped = options.theme === undefined && config.themes.length > 0
   for (const board of boards) {
-    try {
-      made.push((await boardShot(config, { ...options, board })).image)
-    } catch (error) {
-      if (options.board !== undefined) throw error
-      failed.push(`${board}: ${(error as Error).message}`)
+    for (const theme of looped ? config.themes : [options.theme]) {
+      try {
+        made.push((await boardShot(config, { ...options, board, ...(theme === undefined ? {} : { theme }), looped })).image)
+      } catch (error) {
+        if (options.board !== undefined) throw error
+        failed.push(`${board}${theme === undefined ? '' : ` (${theme})`}: ${(error as Error).message}`)
+      }
     }
   }
   return { made, failed }

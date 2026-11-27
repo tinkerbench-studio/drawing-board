@@ -1,6 +1,6 @@
 // A project's hooks: the pieces only it can supply, in one module found by convention at
 // `<snapshot>/drawing-board.{ts,tsx,mts,mjs,js}` (or the `hooks` setting). The package's commands call them:
-// `check` adds what `checks()` returns to its own problems, and `page-shots` shoots what `pages()` returns. The
+// `check` adds what `checks()` returns to its own problems, `page-shots` shoots what `pages()` returns, and `compare` reads a story's markup from `storyMarkup()`. The
 // module is bundled with esbuild (an optional peer dependency) into the project's node_modules/.cache, so its
 // imports resolve against the project's own packages, with JSX and Vite's eager `import.meta.glob` of JSON files.
 import { createHash } from 'node:crypto'
@@ -33,6 +33,8 @@ export type Hooks = {
   checks?: (context: HookContext) => readonly string[] | Promise<readonly string[]>
   /** How a story is served: the page to draw beside a board. Return undefined to use the built Storybook. */
   storyPage?: (context: HookContext & StoryRequest) => StoryPage | undefined | Promise<StoryPage | undefined>
+  /** The markup of a story, for `drawing-board compare`: what the story draws, as HTML. Return undefined to use the built Storybook. */
+  storyMarkup?: (context: HookContext & StoryRequest) => string | undefined | Promise<string | undefined>
   /** The pages `drawing-board page-shots` shoots, by name. */
   pages?: (context: HookContext) => Record<string, PageShot> | Promise<Record<string, PageShot>>
 }

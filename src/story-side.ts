@@ -39,7 +39,7 @@ export const storybookEntries = (storybook: string): IndexEntry[] => {
 /** A story ready to open: its URL, what to wait for, how the banner names it, and the servers to close afterwards. */
 export type StorySide = { url: string; ready: string; title: string; name: string; id: string; hooked: boolean; close: () => void }
 
-export type StorySideOptions = { storybook?: string; storyId?: string; theme?: 'light' | 'dark' }
+export type StorySideOptions = { storybook?: string; storyId?: string; theme?: string }
 
 /** The story a mapped board is drawn beside: the `storyPage()` hook's page when the project has one and it returns one, else the built Storybook's. */
 export const openStorySide = async (config: Config, hooks: Hooks, board: string, options: StorySideOptions = {}): Promise<StorySide> => {
