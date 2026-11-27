@@ -37,6 +37,8 @@ export type Hooks = {
   storyMarkup?: (context: HookContext & StoryRequest) => string | undefined | Promise<string | undefined>
   /** The pages `drawing-board page-shots` shoots, by name. */
   pages?: (context: HookContext) => Record<string, PageShot> | Promise<Record<string, PageShot>>
+  /** The entry files of each page, from the project folder, for `drawing-board required-pictures`: a page is touched when what its entries import reaches a changed file. */
+  pageSources?: (context: HookContext) => Record<string, readonly string[]> | Promise<Record<string, readonly string[]>>
 }
 
 export const HOOK_NAMES = ['drawing-board.ts', 'drawing-board.tsx', 'drawing-board.mts', 'drawing-board.mjs', 'drawing-board.js']
